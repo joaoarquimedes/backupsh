@@ -1,0 +1,166 @@
+#!/bin/bash
+#
+# backupsh.dep - Script de dependências para uso das funções
+#
+# Autor         : Joao Arquimedes de S. Costa
+# Manutenção    : o mesmo
+#
+# -----------------------------------------------------------------------
+#
+# Este script tem por objetivo provêr funcionalidades personalizadas a
+# outros scripts. Para uso basta chamar este script passando o caminho e o
+# nome do mesmo. Exemplo:
+# . backupsh.dep
+#
+# -----------------------------------------------------------------------
+#
+# Histórico:
+#
+# Versão 1.0:	2015-08-28, João Arquimedes:
+#		- Versão inicial do programa. Definindo as funcionalidades.
+#
+#
+# Joao Costa, Agosto de 2015
+#
+
+
+# Função Debug.
+# -----------------------------------------------------------------------
+# Quando ativo, tem por objetivo depurar o script, imprimindo na saída
+# padrão os resultados. Os parâmetros são recebidos somente como argumento
+# na execução do script.
+#
+# Uso para ativação:
+# nome_script.sh -d [1, 2, 3 ou 4]
+#
+# Uso no programa:
+# Basta chamar a função Debug e passar o nível seguido de um texto.
+# Exemplo:
+# Debug 1 "Iniciando a função x"
+# Debug 2 "Entrando em um laço y"
+# ...
+#
+# Quando usar:
+# 1: "Mensagens genéricas, de localização ("estou aqui")"
+# 2: "Mensagens de localização de fluxo ("entrei no loop")"
+# 3: "Mensagens com conteúdo de variáveis importantes"
+# 4: "Mensagens com conteúdo de variáveis secundárias"
+#
+function Debug() {
+	[ ! -z $deb ] || return
+	[ $1 -le $deb ] || return
+	local prefixo
+	case "$1" in
+		1) prefixo="[ DEBUG ]-- ";;
+		2) prefixo="[ DEBUG ]--- ";;
+		3) prefixo="[ DEBUG ]---- ";;
+		4) prefixo="[ DEBUG ]----- ";;
+		*) echo "Debub não categorizado: $*"; return;;
+	esac
+	shift
+	echo -e "\e[35m${prefixo}${*}\e[m"
+}
+
+
+# Função Mensagem
+# -----------------------------------------------------------------------
+# Função com objetivo de receber o tipo da mensagem e imprimir na saída
+# padrão STDOUT. Pode ser passado também o tipo da mensagem a ser
+# impressa, se é error, warning, alert, info, success ou loading.
+#
+# Exemplo de uso:
+# Messages "Esta é uma mensagem padrão a ser impressa"
+# Messages -E "Esta é uma mensagem do tipo error."
+# Messages -W "Esta é uma mensagem do tipo warning."
+# Messages -A "Esta é uma mensagem do tipo alert."
+# Messages -I "Esta é uma mensagem do tipo info."
+# Messages -S "Esta é uma mensagem do tipo sucesso"
+# Messages -L "Esta é uma mensagem do tipo loading"
+# ...
+#
+# Se o parâmetro -n for passado como argumento, não será quebrado a linha,
+# suportando assim uma mensagem na frente da outra.
+# Exemplo:
+# Messages -I "Mesnagem de teste..." -n
+# Messages " ... mensagem continuando na mesma linha da anterior."
+#
+function Messages() {
+	# Ativando cores
+	ColorError='\e[41;37m'
+	ColorWarning='\e[31m'
+	ColorAlert='\e[33m'
+	ColorInfo='\e[36m'
+	ColorSuccess='\e[32m'
+	ColorF='\e[m'
+
+	local mess
+	local newl=true
+
+	case "$1" in
+		-E | -e)	mess="[${ColorError}erro${ColorF}] ${2}";;
+		-W | -w)	mess="[${ColorWarning}warn${ColorF}] ${2}";;
+		-A | -a)	mess="[${ColorAlert}aler${ColorF}] ${2}";;
+		-I | -i)	mess="[${ColorInfo}info${ColorF}] ${2}";;
+		-S | -s)	mess="[${ColorSuccess} ok ${ColorF}] ${2}";;
+		-L | -l)	mess="[....] ${2}";;
+		*)			mess="$1";;
+	esac
+
+	# Verificando se o modo verboso foi ativo e se tem mensagem
+	[ "$Verbose" = 1 -a -n "$mess" ] || return
+
+	# Verificando se o argumento -n foi passado
+	[ "$2" = "-n" -o "$3" = "-n" ] && newl=false
+
+	# Imprimindo a mensagem
+	[ "$newl" = "true" ] && echo -e "$mess" || echo -e -n "$mess"
+}
+
+
+# Função Sleep
+# -----------------------------------------------------------------------
+# Função para dar um tempo na próxima execução ou na próxima mensagem.
+# Tem por objetivo para facilitar a visualização do programa quando
+# utilizado ou para dar um tempo após executar um determinado comando.
+# 
+# Pode definir um tempo global ou pode receber um valor como parâmetro,
+# em segundos.
+#
+# Exemplo de uso:
+# Sleep		# -> Utilizará o tempo padrão
+# Sleep 3	# -> Aguardará 3 segundo
+# Sleep 4	# -> Aguardará 4 segundos
+# ...
+#
+function Sleep() {
+	# Verificando se o sleep e verboso foram ativos
+	[ "$Sleep" = 1 -a "$Verbose" = 1 ] || return
+	[ -n "$1" ] && [[ "$1" =~ ^([[:digit:]]{1})?\.?([[:digit:]]{1})$ ]] && sleep "$1" || sleep 1
+}
+
+
+# Função Nova Linha
+# -----------------------------------------------------------------------
+# Função responsável somente para acrescentar novas linhas em branco
+# na execução do programa.
+# Uso:
+# Nl		# -> Acrescenta uma única linha em branco
+# Nl 2		# -> Acrescenta duas linhas
+# Nl 3		# -> Acrescenta três linhas...
+#
+function Nl() {
+	# Funciona somente com o modo verboso ativo
+	[ "$Verbose" = 1 ] || return
+	
+	local n=1	# Valor padrão do número de saltos.
+
+	# Verificando se o parâmetro é numérico
+	[[ $1 =~ ^[[:digit:]]{1}$ ]] && [ $1 -gt 0 ] && n=$1
+
+	while [ "${n}" -gt 0 ]
+	do
+		echo ""
+		let n-=1
+	done
+}
+

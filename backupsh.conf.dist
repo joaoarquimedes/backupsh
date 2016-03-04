@@ -1,0 +1,98 @@
+#
+# backupsh.conf - Arquivo de configuração do script de backupsh.sh
+#
+
+# Formato da data para complementar o nome dos arquivos salvos. Formato: YYYYmmdd-HHM
+DATESTAMP=$(date +"%Y%m%d-%H%M")
+
+
+# --> Configurações para hospedagem local
+# -----------------------------------------------------------------------
+# Diretório para armazenamento do backup local
+LOCAL_PATH="/var/backups/backupsh"
+# Nome do arquivo a ser gerado após compactado
+COMPACT_FILE="${DATESTAMP}-$(hostname)-App.tgz"
+# Diretórios a serem realizados o backup
+BKP_DIR="/opt"
+# Ignorar diretório para não ser realizado backup. Exemplo:
+# '--exclude=/media/dir1 --exclude=/opt/dir1/dir2 --exclude=/etc/file.conf'
+BKP_IGN="--exclude-vcs"
+# Quantidade de backups retidos. Valor da quantiade de arquivos retidos
+# localmente. Será gerado um arquivo por dia, se a data de criação do
+# arquivo for maior que o valor da renteção, o mesmo será excluído
+# definitivamente (dia 24h).
+# Exemplo:
+# 	Valor 1, os arquivos anterior a 24 horas serão removidos.
+# 	Valor 2, os arquivos anterior a 48 horas serão removidos.
+RETENTION_LOCAL=1
+
+
+# --> Configurações para hospedagem remota
+# -----------------------------------------------------------------------
+# Conta de usuário do Active Directory com permissão para montar o diretório.
+USER="backup.sh"
+PASS=""
+# IP do servidor passivo a receber os arquivos de backup gerado pelo script.
+SERVER=""
+# Diretório de destino dos arquivos. Caminho de mapeamento do servidor.
+DST_MOUNT="linux"
+# Diretório onde o mapeamento será montado.
+SRC_MOUNT="/mnt/backupsh"
+# Quantidade de backups retidos. Valor da quantiade de arquivos retidos
+# no servidor de hospedagem. Será gerado um arquivo por dia, se a data de
+# criação do arquivo for maior que o valor da renteção, o mesmo será
+# excluído definitivamente (dia 24h).
+# Exemplo:
+#       Valor 1, os arquivos anterior a 24 horas serão removidos.
+#       Valor 2, os arquivos anterior a 48 horas serão removidos.
+RETENTION_REMOTE=3
+
+
+# --> Configurações para backup do banco de dados
+# -----------------------------------------------------------------------
+# Realizar backup da base de dados? [Yes | No]
+BKP_DATABASE="No"
+# Tipo da dase de dados? [MySQL | PostgreSQL]
+DATABASE_TYPE="MySQL"
+# Conta de usuário
+DATABASE_USER="backupuser"
+# Senha do usuário
+DATABASE_PASS=""
+#
+# Exemplo sentença SQL para criar conta de usuário para backup no MySQL:
+# CREATE USER 'backupuser'@'localhost' IDENTIFIED BY  'xxx';
+# GRANT SELECT, RELOAD, FILE, SUPER, LOCK TABLES, SHOW VIEW ON * . * TO  'backupuser'@'localhost' IDENTIFIED BY  'xxx' WITH MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0 ;
+#
+# Exemplo sentença SQL para criar conta de usuário para backup no PostgreSQL:
+# create user backupuser with encrypted password 'xxx';
+# ALTER USER backupuser WITH SUPERUSER;
+#
+
+# --> Log's
+# -----------------------------------------------------------------------
+# Local onde serão armazenados os log's (DIRETÓRIO). Sem a barra (/) no final.
+LOG_PATH="/var/log"
+# Nome do arquivo de log.
+LOG_FILE="${LOG_PATH}/backupsh.log"
+LOG_FILE_ERROR="${LOG_PATH}/backupsh.error.log"
+
+
+# --> Chave de ativação dos recursos do sistema.
+# -----------------------------------------------------------------------
+# 1 -> Liga
+# 0 -> Desliga
+#
+# Gravar os logs em arquivo?
+GravaLog=1
+# Modo verboso. Apresentando as mensagens na saída padrão (STDOUT)?
+Verbose=1
+# Sleep: Terá um tempo entre as execuções do programa?
+Sleep=0
+
+
+# --> Script externo
+# -----------------------------------------------------------------------
+# Caso haja necessidade de adicionar comandos extras para complementar o
+# backup local, basta criar o arquivo "backupsh.add" (exatamente com este
+# nome) no mesmo diretório dos demais script's e adicionar diretamente os
+# comandos bash's no mesmo.
