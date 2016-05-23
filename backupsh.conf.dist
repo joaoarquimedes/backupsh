@@ -27,17 +27,21 @@ BKP_IGN="--exclude-vcs"
 RETENTION_LOCAL=1
 
 
-# --> Configurações para hospedagem remota
+# --> Configurações para hospedagem remota com Windows
 # -----------------------------------------------------------------------
+# Realiza cópia do backup para o servidor remoto? [ Yes | No ]
+WIN_BKP_REMOTE="Yes"
 # Conta de usuário do Active Directory com permissão para montar o diretório.
-USER="backup.sh"
-PASS=""
+WIN_USER="backupuser"
+WIN_PASS=""
 # IP do servidor passivo a receber os arquivos de backup gerado pelo script.
-SERVER=""
-# Diretório de destino dos arquivos. Caminho de mapeamento do servidor.
-DST_MOUNT="linux"
+WIN_SERVER=""
+# Diretório de destino dos arquivos. Nome do mapeamento no servidor windows.
+# Exemplo: Se no servidor windows o nome do compartilhamento for "linux", então
+# o nome do diretório será "linux".
+WIN_DST_MOUNT=""
 # Diretório onde o mapeamento será montado.
-SRC_MOUNT="/mnt/backupsh"
+WIN_SRC_MOUNT="/mnt/backupsh"
 # Quantidade de backups retidos. Valor da quantiade de arquivos retidos
 # no servidor de hospedagem. Será gerado um arquivo por dia, se a data de
 # criação do arquivo for maior que o valor da renteção, o mesmo será
@@ -45,17 +49,17 @@ SRC_MOUNT="/mnt/backupsh"
 # Exemplo:
 #       Valor 1, os arquivos anterior a 24 horas serão removidos.
 #       Valor 2, os arquivos anterior a 48 horas serão removidos.
-RETENTION_REMOTE=3
+WIN_RETENTION_REMOTE=3
 
 
 # --> Configurações para backup do banco de dados
 # -----------------------------------------------------------------------
-# Realizar backup da base de dados? [Yes | No]
+# Realizar backup da base de dados? [ Yes | No ]
 BKP_DATABASE="No"
-# Tipo da dase de dados? [MySQL | PostgreSQL]
+# Tipo da dase de dados? [ MySQL | PostgreSQL ]
 DATABASE_TYPE="MySQL"
 # Conta de usuário
-DATABASE_USER="backupuser"
+DATABASE_USER=""
 # Senha do usuário
 DATABASE_PASS=""
 #
