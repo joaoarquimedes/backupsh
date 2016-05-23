@@ -67,6 +67,11 @@
 # Versão 1.3.6: 2016.01.22, João Arquimedes:
 #               - Especificado os arquivos a serem rotacionados na função "backupRotate()" com o parâmetro "-name *$(hostname)*gz" no comando find.
 #
+# Versão 1.4.0: 2016.05.22, João Arquimedes:
+#               - Adicionado backup remoto como opcional.
+#               - Reconhecendo tipo do sistema operacional.
+#               - Adicionado opcional para poder realizar backup do banco de dados PostgreSQL e MySQL no mesmo script.
+#
 #
 # Joao Costa, Outubro de 2014
 #
@@ -85,10 +90,11 @@ source "${PATH_FULL}/backupsh.conf"
 source "${PATH_FULL}/backupsh.dep"
 
 # Binários a serem verificados antes de dar continuidade no restante da execução do script.
-BIN="rm tar id wc gzip date mkdir find rsync chown chmod hostname md5sum mount umount mount.cifs"
+BIN="rm tar id wc gzip date mkdir find chown chmod hostname md5sum"
 # Complementando o binário caso seja necessário backup do banco de dados
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] && BIN="${BIN} mysql mysqldump"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] && BIN="${BIN} pg_dump psql vacuumdb"
+[ "${WIN_BKP_REMOTE}" = "Yes" ] && BIN="${BIN} mount.cifs mount umount rsync"
 
 MENSAGEM_USO="
 Uso: $(basename "$0") [OPÇÕES]
@@ -553,8 +559,6 @@ function LocalBackup() {
 # Função com objetivo de realizar backup das bases de dados a partir do banco
 # MySQL
 function DatabaseMySQL() {
-	[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] || return
-	
 	Debug 1 "Iniciando a função $FUNCNAME"
 
 	Messages -L "Iniciando backup das bases de dados com MySQL"
@@ -603,8 +607,6 @@ function DatabaseMySQL() {
 # Função com objetivo de realizar o backup das bases de dados a partir do
 # banco PostgreSQL
 function DatabasePostgreSQL() {
-        [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || return
-
         Debug 1 "Iniciando a função $FUNCNAME"
 
         Messages -L "Iniciando backup das bases de dados com PostgreSQL"
@@ -670,7 +672,7 @@ function MountDir() {
 	WriteLog "Iniciando a montagem do diretório para backup remoto."
 	Messages -L "Verificando o ponto de montagem"
 	Sleep
-	CheckDir "${SRC_MOUNT}" --create
+	CheckDir "${WIN_SRC_MOUNT}" --create
 	if [ $? != 0 ]; then
 		Messages -E "Erro ao verificar o ponto de montagem. Backup cancelado"
 		WriteLog "Erro ao verificar o ponto de montagem. Backup cancelado"
@@ -678,19 +680,19 @@ function MountDir() {
 		exit 1
 	fi
 
-	Messages -L "Mapeando diretório \"${DST_MOUNT}\" do servidor ${SERVER}"
+	Messages -L "Mapeando diretório \"${WIN_DST_MOUNT}\" do servidor ${WIN_SERVER}"
 	Sleep
-	if [ ! "$(mount | grep ${DST_MOUNT})" ]; then
-		Messages -A "Montando diretório"
+	if [ ! "$(mount | grep ${WIN_SERVER}/${WIN_DST_MOUNT})" ]; then
+		Messages -I "Montando diretório"
 		WriteLog "Montando diretório"
-		Debug 2 "Montando diretório. Comando: mount -t cifs //${SERVER}/${DST_MOUNT} ${SRC_MOUNT} -o username=${USER},password=${PASS},iocharset=utf8"
+		Debug 2 "Montando diretório. Comando: mount -t cifs //${WIN_SERVER}/${WIN_DST_MOUNT} ${WIN_SRC_MOUNT} -o username=${WIN_USER},password=${WIN_PASS},iocharset=utf8"
 		Sleep
-		mount -t cifs //${SERVER}/${DST_MOUNT} ${SRC_MOUNT} -o username=${USER},password=${PASS},iocharset=utf8
+		mount -t cifs //${WIN_SERVER}/${WIN_DST_MOUNT} ${WIN_SRC_MOUNT} -o username=${WIN_USER},password=${WIN_PASS},iocharset=utf8
 		if [ $? = 0 ]; then
 			Messages -S "Diretório montado com sucesso. Verificando permissão de escrita"
 			WriteLog "Diretório montado com sucesso. Verificando permissão de escrita"
 			Sleep
-			CheckDir "${SRC_MOUNT}" --write
+			CheckDir "${WIN_SRC_MOUNT}" --write
 			if [ $? != 0 ]; then
 				Messages -E "Diretório sem permissão de escrita. Backup cancelado."
 				WriteLog "Diretório sem permissão de escrita. Backup cancelado."
@@ -698,8 +700,8 @@ function MountDir() {
 				exit 1
 			fi
 		else
-			Messages -E "Erro na montagem do diertório do servidor ${SERVER}"
-			WriteLog "Erro na montagem do diertório do servidor ${SERVER}"
+			Messages -E "Erro na montagem do diertório do servidor ${WIN_SERVER}"
+			WriteLog "Erro na montagem do diertório do servidor ${WIN_SERVER}"
 			Debug 3 "Erro do último comando executado. saindo do script com saída 1"
 			exit 1
 		fi
@@ -707,7 +709,7 @@ function MountDir() {
 		Messages -S "Diretório já montado. Verificando permissão de escrita."
 		WriteLog "Diretório já montado. Verificando permissão de escrita."
 		Sleep
-		CheckDir "${SRC_MOUNT}" --write
+		CheckDir "${WIN_SRC_MOUNT}" --write
 		if [ $? != 0 ]; then
 			Messages -E "Diretório sem permissão de escrita. Backup cancelado."
 			WriteLog "Diretório sem permissão de escrita. Backup cancelado."
@@ -728,8 +730,8 @@ function UmountDir() {
 	Messages -L "Desmontando diretório remoto"
 	WriteLog "Desmontando diretório remoto"
 	Sleep
-	Debug 2 "Desmontando a unidade ${SRC_MOUNT} com umount"
-	[ "$(mount | grep ${DST_MOUNT})" ] && umount ${SRC_MOUNT}
+	Debug 2 "Desmontando a unidade ${WIN_SRC_MOUNT} com umount"
+	[ "$(mount | grep ${WIN_DST_MOUNT})" ] && umount ${WIN_SRC_MOUNT}
 }
 
 
@@ -738,15 +740,15 @@ function UmountDir() {
 # remoto.
 function RemoteSync() {
 	Debug 1 "Iniciando a função $FUNCNAME"
-	Messages -L "Sincronizando arquivos para servidor remoto: ${SERVER}"
-	WriteLog "Sincronizando arquivos para servidor remoto: ${SERVER}"
+	Messages -L "Sincronizando arquivos para servidor remoto: ${WIN_SERVER}"
+	WriteLog "Sincronizando arquivos para servidor remoto: ${WIN_SERVER}"
 	Sleep
 
 	# Verificando se foi informado a barra no final da variável
-	[[ "${SRC_MOUNT}" =~ \/$ ]] && pathToSync="${SRC_MOUNT}$(hostname)/" || pathToSync="${SRC_MOUNT}/$(hostname)/"
+	[[ "${WIN_SRC_MOUNT}" =~ \/$ ]] && pathToSync="${WIN_SRC_MOUNT}$(hostname)/" || pathToSync="${WIN_SRC_MOUNT}/$(hostname)/"
 
 	Debug 2 "Tratando a variável do caminho do backup remoto:"
-	Debug 2 "Valor da variável \$SRC_MOUNT: ${SRC_MOUNT}"
+	Debug 2 "Valor da variável \$SRC_MOUNT: ${WIN_SRC_MOUNT}"
 	Debug 2 "Valor da variável local \$pathToSync: ${pathToSync}"
 
 	CheckDir ${pathToSync} --create --write
@@ -754,7 +756,7 @@ function RemoteSync() {
 		# Tratando caminho de origem
 		[[ "${LOCAL_PATH}" =~ \/$ ]] && localPath="${LOCAL_PATH}" || localPath="${LOCAL_PATH}/"
 
-		backupRotate ${RETENTION_REMOTE} ${pathToSync}
+		backupRotate ${WIN_RETENTION_REMOTE} ${pathToSync}
 
 		Debug 3 "Realizando sincronismo para o servidor remoto com comando rsync -avHK ${localPath} ${pathToSync}"
 
@@ -813,12 +815,13 @@ WriteLog --checkdir; Nl
 WriteLog "Iniciando o processo de backup."
 
 LocalBackup; Nl
-DatabaseMySQL; Nl
-DatabasePostgreSQL; Nl
-MountDir; Nl
-RemoteSync; Nl
-AddCommand; Nl
-UmountDir; Nl
+
+[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] && { DatabaseMySQL; Nl; }
+[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] && { returnDatabasePostgreSQL; Nl; }
+[ "${WIN_BKP_REMOTE}" = "Yes" ] && { MountDir && RemoteSync; Nl; }
+[ -e "${PATH_FULL}/backupsh.add" ] && { AddCommand; Nl; }
+[ "${WIN_BKP_REMOTE}" = "Yes" ] && { UmountDir; Nl; }
+
 SetPermissions
 
 WriteLog "Fim do processo de backup"
