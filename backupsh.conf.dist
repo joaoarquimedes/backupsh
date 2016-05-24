@@ -12,7 +12,7 @@ DATESTAMP=$(date +"%Y%m%d-%H%M")
 LOCAL_PATH="/var/backups/backupsh"
 # Nome do arquivo a ser gerado após compactado
 COMPACT_FILE="${DATESTAMP}-$(hostname)-App.tgz"
-# Diretórios a serem realizados o backup
+# Diretórios a serem realizados o backup. Exemplo: /etc /opt /var/log
 BKP_DIR="/opt"
 # Ignorar diretório para não ser realizado backup. Exemplo:
 # '--exclude=/media/dir1 --exclude=/opt/dir1/dir2 --exclude=/etc/file.conf'
@@ -54,12 +54,13 @@ WIN_RETENTION_REMOTE=3
 
 # --> Configurações para backup do banco de dados
 # -----------------------------------------------------------------------
-# Realizar backup da base de dados? [ Yes | No ]
-BKP_DATABASE="No"
+# Realizar backup da base de dados? [ Yes | No | All ]
+# A opção All irá realizar backup de todas as bases abaixo, independênte da escolha do tipo da base de dados.
+BKP_DATABASE="Yes"
 # Tipo da dase de dados? [ MySQL | PostgreSQL ]
 DATABASE_TYPE="MySQL"
 # Conta de usuário
-DATABASE_USER=""
+DATABASE_USER="backupuser"
 # Senha do usuário
 DATABASE_PASS=""
 #
@@ -68,9 +69,11 @@ DATABASE_PASS=""
 # GRANT SELECT, RELOAD, FILE, SUPER, LOCK TABLES, SHOW VIEW ON * . * TO  'backupuser'@'localhost' IDENTIFIED BY  'xxx' WITH MAX_QUERIES_PER_HOUR 0 MAX_CONNECTIONS_PER_HOUR 0 MAX_UPDATES_PER_HOUR 0 MAX_USER_CONNECTIONS 0 ;
 #
 # Exemplo sentença SQL para criar conta de usuário para backup no PostgreSQL:
-# create user backupuser with encrypted password 'xxx';
-# ALTER USER backupuser WITH SUPERUSER;
-#
+# create user backupuser with encrypted password 'xxx' SUPERUSER;
+# No arquivo "pg_hba.conf", pode ser configurado da seguinte forma:
+#   local   all   postgres     peer
+#   local   all   backupuser   trust
+
 
 # --> Log's
 # -----------------------------------------------------------------------
