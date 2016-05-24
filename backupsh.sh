@@ -81,19 +81,19 @@ PATH_FULL=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 
 # Importando as configurações
 # -----------------------------------------------------------------------
-[ ! -e "${PATH_FULL}/backupsh.conf" ] && { echo "*** ERRO ***: Arquivo backupsh.conf não encontrado. Renomear o arquivo backupsh.conf.dist para backupsh.conf"; exit 1;}
+[ ! -e "${PATH_FULL}/backupsh.conf" ] && { echo "*** ERRO ***: Arquivo backupsh.conf não encontrado. Renomear o arquivo backupsh.conf.dist para backupsh.conf"; exit 1; }
 source "${PATH_FULL}/backupsh.conf"
 
 # Importando funções básicas
 # -----------------------------------------------------------------------
-[ ! -e "${PATH_FULL}/backupsh.dep" ] && { echo "*** ERRO ***: Arquivo backupsh.dep não localizado. Necessita para continuar com o script"; exit 1;}
+[ ! -e "${PATH_FULL}/backupsh.dep" ] && { echo "*** ERRO ***: Arquivo backupsh.dep não localizado. Necessita para continuar com o script"; exit 1; }
 source "${PATH_FULL}/backupsh.dep"
 
 # Binários a serem verificados antes de dar continuidade no restante da execução do script.
 BIN="rm tar id wc gzip date mkdir find chown chmod hostname md5sum"
 # Complementando o binário caso seja necessário backup do banco de dados
-[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] && BIN="${BIN} mysql mysqldump"
-[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] && BIN="${BIN} pg_dump psql vacuumdb"
+[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} mysql mysqldump"
+[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} pg_dump psql vacuumdb"
 [ "${WIN_BKP_REMOTE}" = "Yes" ] && BIN="${BIN} mount.cifs mount umount rsync"
 
 MENSAGEM_USO="
@@ -190,6 +190,7 @@ function CheckBin() {
 	then
 		Messages -S "Verificação concluída com sucesso."
 		Sleep 2
+		Nl
 	else
 		Messages -E "Programa interrompido. Depedência necessária ou binário não localizado."
 		Nl
@@ -363,15 +364,13 @@ function WriteLog() {
 		Debug 2 "Escrevendo em log de error."
 		local CurrentDate=$(date "+%Y/%m/%d %H:%M:%S")
 		local CurrentUser=$(id -u -n)
-
 		echo "${CurrentDate} ${CurrentUser} - ${2}" >> ${LOG_FILE_ERROR}
 	elif [ ! -z "$1" -a "$setdir" = 0 ]
 	then
 		Debug 2 "Escrevendo em log."
 		local CurrentDate=$(date "+%Y/%m/%d %H:%M:%S")
-                local CurrentUser=$(id -u -n)
-
-                echo "${CurrentDate} ${CurrentUser} - ${1}" >> ${LOG_FILE}
+        local CurrentUser=$(id -u -n)
+        echo "${CurrentDate} ${CurrentUser} - ${1}" >> ${LOG_FILE}
 	fi
 	Debug 1 "Fim da função $FUNCNAME"
 	return 0
@@ -545,6 +544,7 @@ function LocalBackup() {
 		Sleep
 		
 		Debug 1 "Saindo da função $FUNCNAME com retorno 0"
+		Nl
 		return 0
 	fi
 
@@ -559,6 +559,9 @@ function LocalBackup() {
 # Função com objetivo de realizar backup das bases de dados a partir do banco
 # MySQL
 function DatabaseMySQL() {
+
+    [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] || [ "${BKP_DATABASE}" = "All" ] || return 1
+
 	Debug 1 "Iniciando a função $FUNCNAME"
 
 	Messages -L "Iniciando backup das bases de dados com MySQL"
@@ -570,11 +573,23 @@ function DatabaseMySQL() {
 	# Tratando caminho absoluto para hospedagem do arquivo
     [[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}" || path="${LOCAL_PATH}/"
 
-	local getDatabases=$(mysql --user="${DATABASE_USER}" --password="${DATABASE_PASS}" -e "SHOW DATABASES;" | tr -d "| " | grep -v Database)
+    Debug 2 "Comando para mapear todas as bases de dados: mysql --user=\"${DATABASE_USER}\" --password=\"${DATABASE_PASS}\" -e \"SHOW DATABASES;\" | tr -d \"| \" | grep -v Database | egrep -v \"^sys$\""
 
-	Debug 2 "Varrendo as bases de dados com o comando: SHOW DATABASES;"
+	getDatabases () {
+		(mysql --user="${DATABASE_USER}" --password="${DATABASE_PASS}" -e "SHOW DATABASES;" | tr -d "| " | grep -v Database | egrep -v "^sys$") 2>> ${LOG_FILE_ERROR}
+	}
+
+    if [[ ! $(getDatabases) ]]; then
+    	Messages -E "Erro ao listar as bases de dados."
+    	WriteLog --error "Erro ao listar as bases de dados."
+    	Nl
+    	return 1
+    fi	
+
+    local error=0
+
 	Debug 2 "Entrando no laço for"
-	for db in ${getDatabases}; do
+	for db in $(getDatabases); do
 		Debug 3 "Valor da variável \$db: ${db}"
 		if [ "${db}" != "information_schema" -a "${db}" != "performance_schema" ]; then
 			Messages -L "Realizando dump da base: ${db}"
@@ -583,7 +598,7 @@ function DatabaseMySQL() {
 			local fullname="${DATESTAMP}-$(hostname)-mysql-${db}.sql"
 
 			Debug 4 "Realizando dump da base: ${db} com o comando: mysqldump --user="${DATABASE_USER}" --password="${DATABASE_PASS}" --databases ${db} > ${path}${fullname}"
-			mysqldump --user="${DATABASE_USER}" --password="${DATABASE_PASS}" --databases ${db} > ${path}${fullname} 2>> ${LOG_FILE_ERROR}
+			(mysqldump --user="${DATABASE_USER}" --password="${DATABASE_PASS}" --databases ${db} > ${path}${fullname}) 2>> ${LOG_FILE_ERROR}
 			if [ $? = 0 ]
 			then
 				Messages -S "${db} -> Compactando..."
@@ -597,67 +612,89 @@ function DatabaseMySQL() {
 			else
 				Messages -W "Erro ao realizar o dump da base de dados: ${db}"
 				WriteLog --error "Erro ao realizar backup da base de dados: ${db}"
+				error=1
 			fi
 		fi
 	done
 	Debug 2 "Saindo do laço for"
+	Nl
+	[ $error = 0 ] && return 0 || return 1
 }
 
 # function DatabasePostgreSQL()
 # Função com objetivo de realizar o backup das bases de dados a partir do
 # banco PostgreSQL
 function DatabasePostgreSQL() {
-        Debug 1 "Iniciando a função $FUNCNAME"
 
-        Messages -L "Iniciando backup das bases de dados com PostgreSQL"
-        WriteLog "Iniciando backup das bases de dados com PostgreSQL"
-        Sleep
+    [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || [ "${BKP_DATABASE}" = "All" ] || return 1
 
-        Messages -I "Varrendo as bases"
+    Debug 1 "Iniciando a função $FUNCNAME"
 
-        # Tratando caminho absoluto para hospedagem do arquivo
-        [[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}" || path="${LOCAL_PATH}/"
+    Messages -L "Iniciando backup das bases de dados com PostgreSQL"
+    WriteLog "Iniciando backup das bases de dados com PostgreSQL"
+    Sleep
 
-        # Concedendo permissão de escrita para usuário postgres no direório de backup
-        chown -R postgres. ${path}
+    Messages -I "Varrendo as bases"
 
-        local getDatabases=$(su - postgres -c "psql -l -U \"${DATABASE_USER}\"" | sed -n 4,/\eof/p | grep -v '(' | awk {'print $1'} | grep -v '|' | grep -v template0)
+    # Tratando caminho absoluto para hospedagem do arquivo
+    [[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}" || path="${LOCAL_PATH}/"
 
-        Debug 2 "Varrendo as bases de dados com o comando: su - postgres -c psql;"
-        Debug 2 "Entrando no laço for"
-        for db in ${getDatabases}; do
-                Messages -I "Realizando vacuum na base de dados: ${db}"
-                WriteLog "Realizando vacuum na base de dados: ${db}"
-                Debug 3 "Realizando vacuum na base com o comando: su - postgres -c \"/usr/bin/vacuumdb -U \"${DATABASE_USER}\" -d $db\""
-                su - postgres -c "/usr/bin/vacuumdb -U \"${DATABASE_USER}\" -d ${db}" 2>> ${LOG_FILE_ERROR}
-                if [ $? = 0 ]; then
-                        Messages -S "Vacuum realizado com sucesso: ${db}"
-                        WriteLog "Vacuum realizado com sucesso: ${db}"
-                else
-                        Messages -E "Erro ao realizar o vacuum na base ${db}"
-                        WriteLog --error "Erro ao realizar o vacuum na base ${db}"
-                fi
+    # Concedendo permissão de escrita para usuário postgres no direório de backup
+    chown -R postgres. ${path}
 
-                local fullname="${DATESTAMP}-$(hostname)-postgresql-${db}.sql"
+    getDatabases () {
+    	(su - postgres -c "psql -l -U \"${DATABASE_USER}\"" | sed -n 4,/\eof/p | grep -v '(' | awk {'print $1'} | grep -v '|' | grep -v template0)
+    }
 
-                Messages -I "Realizando dump da base: ${db}"
-                WriteLog "Realizando dump da base: ${db}"
-                Debug 3 "Realizando dump da base com o comando: "
-                su - postgres -c "pg_dump -U \"${DATABASE_USER}\" ${db} -f ${path}${fullname}" 2>> ${LOG_FILE_ERROR}
-                if [ $? = 0 ]; then
-                        Messages -S "Dump ${db} --> Compactando..."
-                        WriteLog "Dump realizado com sucesso: ${db}"
-                        Debug 4 "Dump: ${db} OK. Compactando a base com o comando gzip -qf ${path}${fullname}"
-                        gzip -qf ${path}${fullname}
-                        WriteLog "MD5: $(md5sum ${path}${fullname}.gz)"
-						Messages -I "MD5: $(md5sum ${path}${fullname}.gz)"
-						WriteLog "Size: $(du -h ${path}${fullname}.gz)"
-						Messages -I "Size: $(du -h ${path}${fullname}.gz)"
-                else
-                        Messages -E "Erro ao realizar o dump na base ${db}"
-                        WriteLog --error "Erro ao realizar o dump na base ${db}"
-                fi
-        done
+    if [[ ! $(getDatabases) ]]; then
+    	Messages -E "Erro ao listar as bases de dados."
+    	WriteLog --error "Erro ao listar as bases de dados."
+    	Nl
+    	return 1
+    fi
+
+    local error=0
+
+    Debug 2 "Varrendo as bases de dados com o comando: su - postgres -c psql;"
+    Debug 2 "Entrando no laço for"
+    for db in $(getDatabases); do
+        Messages -I "Realizando vacuum na base de dados: ${db}"
+        WriteLog "Realizando vacuum na base de dados: ${db}"
+        Debug 3 "Realizando vacuum na base com o comando: su - postgres -c \"/usr/bin/vacuumdb -U \"${DATABASE_USER}\" -d $db\""
+        su - postgres -c "/usr/bin/vacuumdb -U \"${DATABASE_USER}\" -d ${db}" 2>> ${LOG_FILE_ERROR}
+        if [ $? = 0 ]; then
+            Messages -S "Vacuum realizado com sucesso: ${db}"
+            WriteLog "Vacuum realizado com sucesso: ${db}"
+        else
+            Messages -E "Erro ao realizar o vacuum na base ${db}"
+            WriteLog --error "Erro ao realizar o vacuum na base ${db}"
+            error=1
+        fi
+
+        local fullname="${DATESTAMP}-$(hostname)-postgresql-${db}.sql"
+
+        Messages -I "Realizando dump da base: ${db}"
+        WriteLog "Realizando dump da base: ${db}"
+        Debug 3 "Realizando dump da base com o comando: "
+        su - postgres -c "pg_dump -U \"${DATABASE_USER}\" ${db} -f ${path}${fullname}" 2>> ${LOG_FILE_ERROR}
+        if [ $? = 0 ]; then
+            Messages -S "Dump ${db} --> Compactando..."
+            WriteLog "Dump realizado com sucesso: ${db}"
+            Debug 4 "Dump: ${db} OK. Compactando a base com o comando gzip -qf ${path}${fullname}"
+            gzip -qf ${path}${fullname}
+            WriteLog "MD5: $(md5sum ${path}${fullname}.gz)"
+            Messages -I "MD5: $(md5sum ${path}${fullname}.gz)"
+            WriteLog "Size: $(du -h ${path}${fullname}.gz)"
+            Messages -I "Size: $(du -h ${path}${fullname}.gz)"
+        else
+            Messages -E "Erro ao realizar o dump na base ${db}"
+            WriteLog --error "Erro ao realizar o dump na base ${db}"
+            error=1
+        fi
+    done
+    Debug 2 "Saindo do laço for"
+    Nl
+    [ $error = 0 ] && return 0 || return 1
 }
 
 
@@ -666,6 +703,8 @@ function DatabasePostgreSQL() {
 # arquivos de backup. Esta função irá consultar as variáveis de usuário, senha
 # servidor e ponto de montagem.
 function MountDir() {
+	[ "${WIN_BKP_REMOTE}" = "Yes" ] || return 1
+
 	Debug 1 "Iniciando a função $FUNCNAME"
 
 	Messages -L "Iniciando a montagem do diretório para backup remoto."
@@ -719,6 +758,7 @@ function MountDir() {
 	fi
 	WriteLog "Diretório OK"
 	Debug 1 "Saindo da função $FUNCNAME"
+	Nl
 	return 0
 }
 
@@ -726,12 +766,14 @@ function MountDir() {
 # function UmountDir()
 # Função com objetivo de desmontar o diretório de backup remoto.
 function UmountDir() {
+    [ "${WIN_BKP_REMOTE}" = "Yes" ] || return 1
+
 	Debug 1 "Iniciando a funcação $FUNCNAME"
 	Messages -L "Desmontando diretório remoto"
 	WriteLog "Desmontando diretório remoto"
 	Sleep
 	Debug 2 "Desmontando a unidade ${WIN_SRC_MOUNT} com umount"
-	[ "$(mount | grep ${WIN_DST_MOUNT})" ] && umount ${WIN_SRC_MOUNT}
+	umount ${WIN_SRC_MOUNT} && { Nl; return 0; }
 }
 
 
@@ -739,6 +781,8 @@ function UmountDir() {
 # Função com objetivo de realizar a cópia dos arquivos para o servidor
 # remoto.
 function RemoteSync() {
+	[ "${WIN_BKP_REMOTE}" = "Yes" ] || return 1
+
 	Debug 1 "Iniciando a função $FUNCNAME"
 	Messages -L "Sincronizando arquivos para servidor remoto: ${WIN_SERVER}"
 	WriteLog "Sincronizando arquivos para servidor remoto: ${WIN_SERVER}"
@@ -768,6 +812,8 @@ function RemoteSync() {
 			Messages -S "Sincronismo realizado com sucesso"
 			WriteLog "Sincronismo realizado com sucesso"
 			Sleep
+			Nl
+			return 0
 		else
 			Messages -E "Erro no processo do sincronismo. Backup cancelado"
 			WriteLog "Erro no processo do sincronismo. Backup cancelado"
@@ -784,10 +830,12 @@ function RemoteSync() {
 # Função com objetivo de setar as permissões adequadas aos backups para acesso
 # somente root
 function SetPermissions(){
-        Messages -I "Setando as permissões no diretório ${LOCAL_PATH}"
-        chown -R root. ${LOCAL_PATH}
-        chmod -R 700 ${LOCAL_PATH}
-        find ${LOCAL_PATH} -type f -exec chmod 600 {} \;
+    Messages -I "Setando as permissões no diretório ${LOCAL_PATH}"
+    chown -R root. ${LOCAL_PATH}
+    chmod -R 700 ${LOCAL_PATH}
+    find ${LOCAL_PATH} -type f -exec chmod 600 {} \;
+    Nl
+    return 0
 }
 
 # function AddCommand()
@@ -795,32 +843,36 @@ function SetPermissions(){
 # com comandos específicos a uma rotina em particular.
 # No mesmo diretório basta criar o arquivo extamente
 function AddCommand(){
-		[ ! -e "${PATH_FULL}/backupsh.add" ] && return 0
-		Debug 1 "Iniciando a função $FUNCNAME"
-		Messages -I "Arquivo adicional localizado. Executando o script para complementar o backup"; Sleep
-		WriteLog "Arquivo adicional localizado. Executando o script para complementar o backup"
-		bash ${PATH_FULL}/backupsh.add
-		Debug 1 "Saindo da função $FUNCNAME"
+    [ -e "${PATH_FULL}/backupsh.add" ] || return 1
+
+    Debug 1 "Iniciando a função $FUNCNAME"
+    Messages -I "Arquivo adicional localizado. Executando o script para complementar o backup"; Sleep
+    WriteLog "Arquivo adicional localizado. Executando o script para complementar o backup"
+    bash ${PATH_FULL}/backupsh.add
+    Debug 1 "Saindo da função $FUNCNAME"
+    Nl
+    return 0
 }
+
 
 clear
 Messages "------------------------------"
 Messages " Iniciando Programa de Backup"
+Messages "$(grep '^# Versão ' "$0" | tail -1 | cut -d : -f 1 | tr -d \#)"
 Messages "------------------------------"
-Sleep; Nl
+sleep 1; Nl
 
-CheckBin; Nl
+CheckBin
 WriteLog --checkdir; Nl
 
 WriteLog "Iniciando o processo de backup."
 
-LocalBackup; Nl
-
-[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] && { DatabaseMySQL; Nl; }
-[ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] && { returnDatabasePostgreSQL; Nl; }
-[ "${WIN_BKP_REMOTE}" = "Yes" ] && { MountDir && RemoteSync; Nl; }
-[ -e "${PATH_FULL}/backupsh.add" ] && { AddCommand; Nl; }
-[ "${WIN_BKP_REMOTE}" = "Yes" ] && { UmountDir; Nl; }
+LocalBackup
+DatabaseMySQL
+DatabasePostgreSQL
+MountDir && RemoteSync
+AddCommand
+UmountDir
 
 SetPermissions
 
