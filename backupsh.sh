@@ -205,7 +205,6 @@ function CheckBin() {
 # function GetOSVersion()
 # Função com objetivo de recuperar o tipo e verão do sistema operacional
 function GetOSVersion() {
-	Debug 1 "Iniciando a função $FUNCNAME"
 
     local OS="unknown"
 
@@ -548,7 +547,7 @@ function LocalBackup() {
 		# Tratando caminho absoluto para hospedagem do arquivo
 		[[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}${COMPACT_FILE}" || path="${LOCAL_PATH}/${COMPACT_FILE}"
 
-        if [ GetOSVersion = "CentOS 5" ]; then
+        if [[ $(GetOSVersion) = "CentOS 5" ]]; then
         	Debug 3 "CentOS 5 detectado..."
         	Debug 3 "Compactando diretórios com comando: tar -czf ${path} ${allowDir[*]} ${BKP_IGN}"
 		    tar -czf ${path} ${allowDir[*]} ${BKP_IGN} 2>> ${LOG_FILE_ERROR}

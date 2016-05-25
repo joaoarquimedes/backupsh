@@ -56,7 +56,7 @@ WIN_RETENTION_REMOTE=3
 # -----------------------------------------------------------------------
 # Realizar backup da base de dados? [ Yes | No | All ]
 # A opção All irá realizar backup de todas as bases abaixo, independênte da escolha do tipo da base de dados.
-BKP_DATABASE="Yes"
+BKP_DATABASE="No"
 # Tipo da dase de dados? [ MySQL | PostgreSQL ]
 DATABASE_TYPE="MySQL"
 # Conta de usuário
