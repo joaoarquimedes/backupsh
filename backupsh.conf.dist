@@ -13,10 +13,10 @@ LOCAL_PATH="/var/backups/backupsh"
 # Nome do arquivo a ser gerado após compactado
 COMPACT_FILE="${DATESTAMP}-$(hostname)-App.tgz"
 # Diretórios a serem realizados o backup. Exemplo: /etc /opt /var/log
-BKP_DIR="/opt"
+BKP_DIR="/opt /etc"
 # Ignorar diretório para não ser realizado backup. Exemplo:
 # '--exclude=/media/dir1 --exclude=/opt/dir1/dir2 --exclude=/etc/file.conf'
-BKP_IGN="--exclude-vcs"
+BKP_IGN=""
 # Quantidade de backups retidos. Valor da quantiade de arquivos retidos
 # localmente. Será gerado um arquivo por dia, se a data de criação do
 # arquivo for maior que o valor da renteção, o mesmo será excluído
@@ -30,7 +30,7 @@ RETENTION_LOCAL=1
 # --> Configurações para hospedagem remota com Windows
 # -----------------------------------------------------------------------
 # Realiza cópia do backup para o servidor remoto? [ Yes | No ]
-WIN_BKP_REMOTE="Yes"
+WIN_BKP_REMOTE="No"
 # Conta de usuário do Active Directory com permissão para montar o diretório.
 WIN_USER="backupuser"
 WIN_PASS=""
