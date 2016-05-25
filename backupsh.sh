@@ -127,9 +127,9 @@ do
 				;;
 			esac
 		;;
-		-l | --log)		GravaLog=1;;
-		-v | --verbose)		Verbose=1;;
-		-s | --sleep)		Sleep=1;;
+		-l | --log)       GravaLog=1;;
+		-v | --verbose)   Verbose=1;;
+		-s | --sleep)     Sleep=1;;
 		-h | --help)
 			echo "$MENSAGEM_USO"
 			exit 0
@@ -156,6 +156,7 @@ if [ "$EUID" -ne 0 ]; then
 	Messages -E "Favor, executar este script como root"
 	exit 1
 fi
+
 
 # function CheckBin()
 # Função responsável para verificar os programas básicos necessários antes
@@ -198,6 +199,31 @@ function CheckBin() {
 	fi
 
 	Debug 1 "Fim da função $FUNCNAME"
+}
+
+
+# function GetOSVersion()
+# Função com objetivo de recuperar o tipo e verão do sistema operacional
+function GetOSVersion() {
+	Debug 1 "Iniciando a função $FUNCNAME"
+
+    local OS="unknown"
+
+    File[0]=/etc/redhat-release
+    File[1]=/etc/debian_version
+
+    for i in ${File[*]}
+    do
+    	if [ -e $i ]; then
+    		[[ $(grep "CentOS Linux release 7" $i) ]]	&& OS="CentOS 7"
+        	[[ $(grep "CentOS release 6" $i) ]]			&& OS="CentOS 6"
+        	[[ $(grep "CentOS release 5" $i) ]]			&& OS="CentOS 5"
+        	[[ $(grep "8\." $i) ]]						&& OS="Debian 8"
+    	fi
+    done
+
+    echo $OS
+    return 0
 }
 
 
@@ -522,10 +548,18 @@ function LocalBackup() {
 		# Tratando caminho absoluto para hospedagem do arquivo
 		[[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}${COMPACT_FILE}" || path="${LOCAL_PATH}/${COMPACT_FILE}"
 
-		Debug 3 "Compactando diretórios com comando: tar -czf ${path} ${allowDir[*]} --exclude-backups --exclude-caches-all --exclude-vcs --ignore-failed-read --ignore-command-error ${BKP_IGN}"
-		tar -czf ${path} ${allowDir[*]} --exclude-backups --exclude-caches-all --ignore-failed-read --ignore-command-error ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
-		Messages -S "Arquivo salvo em ${path}"
-		Sleep
+        if [ GetOSVersion = "CentOS 5" ]; then
+        	Debug 3 "CentOS 5 detectado..."
+        	Debug 3 "Compactando diretórios com comando: tar -czf ${path} ${allowDir[*]} ${BKP_IGN}"
+		    tar -czf ${path} ${allowDir[*]} ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
+		    Messages -S "Arquivo salvo em ${path}"
+		    Sleep
+        else
+        	Debug 3 "Compactando diretórios com comando: tar -czf ${path} ${allowDir[*]} --exclude-backups --exclude-caches-all --exclude-vcs --ignore-failed-read --ignore-command-error ${BKP_IGN}"
+		    tar -czf ${path} ${allowDir[*]} --exclude-backups --exclude-caches-all --ignore-failed-read --ignore-command-error ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
+		    Messages -S "Arquivo salvo em ${path}"
+		    Sleep
+		fi
 
 		md5Sum=$(md5sum ${path})
 		if [ $? = 0 ]
@@ -859,6 +893,7 @@ clear
 Messages "------------------------------"
 Messages " Iniciando Programa de Backup"
 Messages "$(grep '^# Versão ' "$0" | tail -1 | cut -d : -f 1 | tr -d \#)"
+Messages " Linux: $(GetOSVersion)"
 Messages "------------------------------"
 sleep 1; Nl
 
