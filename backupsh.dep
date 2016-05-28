@@ -16,8 +16,8 @@
 #
 # Histórico:
 #
-# Versão 1.0:	2015-08-28, João Arquimedes:
-#		- Versão inicial do programa. Definindo as funcionalidades.
+# Versão 1.0:  2015-08-28, João Arquimedes:
+#     - Versão inicial do programa. Definindo as funcionalidades.
 #
 #
 # Joao Costa, Agosto de 2015
@@ -47,18 +47,18 @@
 # 4: "Mensagens com conteúdo de variáveis secundárias"
 #
 function Debug() {
-	[ ! -z $deb ] || return
-	[ $1 -le $deb ] || return
-	local prefixo
-	case "$1" in
-		1) prefixo="[ DEBUG ]-- ";;
-		2) prefixo="[ DEBUG ]--- ";;
-		3) prefixo="[ DEBUG ]---- ";;
-		4) prefixo="[ DEBUG ]----- ";;
-		*) echo "Debub não categorizado: $*"; return;;
-	esac
-	shift
-	echo -e "\e[35m${prefixo}${*}\e[m"
+   [ ! -z $deb ] || return
+   [ $1 -le $deb ] || return
+   local prefixo
+   case "$1" in
+      1) prefixo="[ DEBUG ]-- ";;
+      2) prefixo="[ DEBUG ]--- ";;
+      3) prefixo="[ DEBUG ]---- ";;
+      4) prefixo="[ DEBUG ]----- ";;
+      *) echo "Debub não categorizado: $*"; return;;
+   esac
+   shift
+   echo -e "\e[35m${prefixo}${*}\e[m"
 }
 
 
@@ -85,35 +85,35 @@ function Debug() {
 # Messages " ... mensagem continuando na mesma linha da anterior."
 #
 function Messages() {
-	# Ativando cores
-	ColorError='\e[41;37m'
-	ColorWarning='\e[31m'
-	ColorAlert='\e[33m'
-	ColorInfo='\e[36m'
-	ColorSuccess='\e[32m'
-	ColorF='\e[m'
+   # Ativando cores
+   ColorError='\e[41;37m'
+   ColorWarning='\e[31m'
+   ColorAlert='\e[33m'
+   ColorInfo='\e[36m'
+   ColorSuccess='\e[32m'
+   ColorF='\e[m'
 
-	local mess
-	local newl=true
+   local mess
+   local newl=true
 
-	case "$1" in
-		-E | -e)	mess="[${ColorError}erro${ColorF}] ${2}";;
-		-W | -w)	mess="[${ColorWarning}warn${ColorF}] ${2}";;
-		-A | -a)	mess="[${ColorAlert}aler${ColorF}] ${2}";;
-		-I | -i)	mess="[${ColorInfo}info${ColorF}] ${2}";;
-		-S | -s)	mess="[${ColorSuccess} ok ${ColorF}] ${2}";;
-		-L | -l)	mess="[....] ${2}";;
-		*)			mess="$1";;
-	esac
+   case "$1" in
+      -E | -e) mess="[${ColorError}erro${ColorF}] ${2}";;
+      -W | -w) mess="[${ColorWarning}warn${ColorF}] ${2}";;
+      -A | -a) mess="[${ColorAlert}aler${ColorF}] ${2}";;
+      -I | -i) mess="[${ColorInfo}info${ColorF}] ${2}";;
+      -S | -s) mess="[${ColorSuccess} ok ${ColorF}] ${2}";;
+      -L | -l) mess="[....] ${2}";;
+      *)       mess="$1";;
+   esac
 
-	# Verificando se o modo verboso foi ativo e se tem mensagem
-	[ "$Verbose" = 1 -a -n "$mess" ] || return
+   # Verificando se o modo verboso foi ativo e se tem mensagem
+   [ "$Verbose" = 1 -a -n "$mess" ] || return
 
-	# Verificando se o argumento -n foi passado
-	[ "$2" = "-n" -o "$3" = "-n" ] && newl=false
+   # Verificando se o argumento -n foi passado
+   [ "$2" = "-n" -o "$3" = "-n" ] && newl=false
 
-	# Imprimindo a mensagem
-	[ "$newl" = "true" ] && echo -e "$mess" || echo -e -n "$mess"
+   # Imprimindo a mensagem
+   [ "$newl" = "true" ] && echo -e "$mess" || echo -e -n "$mess"
 }
 
 
@@ -127,15 +127,15 @@ function Messages() {
 # em segundos.
 #
 # Exemplo de uso:
-# Sleep		# -> Utilizará o tempo padrão
-# Sleep 3	# -> Aguardará 3 segundo
-# Sleep 4	# -> Aguardará 4 segundos
+# Sleep     # -> Utilizará o tempo padrão
+# Sleep 3   # -> Aguardará 3 segundo
+# Sleep 4   # -> Aguardará 4 segundos
 # ...
 #
 function Sleep() {
-	# Verificando se o sleep e verboso foram ativos
-	[ "$Sleep" = 1 -a "$Verbose" = 1 ] || return
-	[ -n "$1" ] && [[ "$1" =~ ^([[:digit:]]{1})?\.?([[:digit:]]{1})$ ]] && sleep "$1" || sleep 1
+   # Verificando se o sleep e verboso foram ativos
+   [ "$Sleep" = 1 -a "$Verbose" = 1 ] || return
+   [ -n "$1" ] && [[ "$1" =~ ^([[:digit:]]{1})?\.?([[:digit:]]{1})$ ]] && sleep "$1" || sleep 1
 }
 
 
@@ -144,23 +144,23 @@ function Sleep() {
 # Função responsável somente para acrescentar novas linhas em branco
 # na execução do programa.
 # Uso:
-# Nl		# -> Acrescenta uma única linha em branco
-# Nl 2		# -> Acrescenta duas linhas
-# Nl 3		# -> Acrescenta três linhas...
+# Nl     # -> Acrescenta uma única linha em branco
+# Nl 2      # -> Acrescenta duas linhas
+# Nl 3      # -> Acrescenta três linhas...
 #
 function Nl() {
-	# Funciona somente com o modo verboso ativo
-	[ "$Verbose" = 1 ] || return
-	
-	local n=1	# Valor padrão do número de saltos.
+   # Funciona somente com o modo verboso ativo
+   [ "$Verbose" = 1 ] || return
+   
+   local n=1   # Valor padrão do número de saltos.
 
-	# Verificando se o parâmetro é numérico
-	[[ $1 =~ ^[[:digit:]]{1}$ ]] && [ $1 -gt 0 ] && n=$1
+   # Verificando se o parâmetro é numérico
+   [[ $1 =~ ^[[:digit:]]{1}$ ]] && [ $1 -gt 0 ] && n=$1
 
-	while [ "${n}" -gt 0 ]
-	do
-		echo ""
-		let n-=1
-	done
+   while [ "${n}" -gt 0 ]
+   do
+      echo ""
+      let n-=1
+   done
 }
 
