@@ -17,7 +17,7 @@
 #
 # Histórico:
 #
-# Versão 1.0.0:   2014-10-24, João Arquimedes:
+# Versão 1.0.0: 2014-10-24, João Arquimedes:
 #               - Versão inicial do programa. Definindo as funcionalidades básicas.
 #
 # Versão 1.0.1: 2015-08-28, João Arquimedes:
@@ -72,6 +72,9 @@
 #               - Reconhecendo tipo do sistema operacional.
 #               - Adicionado opcional para poder realizar backup do banco de dados PostgreSQL e MySQL no mesmo script.
 #
+# Versão 1.4.1: 2016.07.02, João Arquimedes:
+#               - Adicionado controle de execução, travando o processo com lock e PID.
+#
 #
 # Joao Costa, Outubro de 2014
 #
@@ -90,7 +93,7 @@ source "${PATH_FULL}/backupsh.conf"
 source "${PATH_FULL}/backupsh.dep"
 
 # Binários a serem verificados antes de dar continuidade no restante da execução do script.
-BIN="rm tar id wc gzip date mkdir find chown chmod hostname md5sum"
+BIN="rm tar id wc gzip date mkdir find chown chmod hostname md5sum flock"
 # Complementando o binário caso seja necessário backup do banco de dados
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} mysql mysqldump"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} pg_dump psql vacuumdb"
@@ -101,7 +104,7 @@ Uso: $(basename "$0") [OPÇÕES]
    Programa parar realizar backup da máquina local. Edite o arquivo para setar as configurações conforme as necessidades.
 
    OPÇÕES:
-      -d, --debug    Habilita modo debug. Informar o nível do debug [1, 2, 3 ou 4]
+   -d, --debug    Habilita modo debug. Informar o nível do debug [1, 2, 3 ou 4]
    -l, --log      Habilita e gera log gravando em arquivo.
    -s, --sleep    Habilita sleep, dando um tempo entre as execuções dos comandos. Funciona em conjunto com -v
    -v, --verbose  Habilita modo verboso, apresentando mensagens na saída padrão.
@@ -157,6 +160,16 @@ if [ "$EUID" -ne 0 ]; then
    exit 1
 fi
 
+# Gera o PID do programa e cria o arquivo lock
+PIDFILE="/var/run/$(basename $0).pid"
+LOCKFILE="/var/run/lock/$(basename $0).lock"
+LOCKFD=99
+_lock()             { flock -$1 $LOCKFD; }
+_no_more_locking()  { _lock u; _lock xn && rm -f ${LOCKFILE} && rm -r ${PIDFILE}; }
+_prepare_locking()  { eval "exec ${LOCKFD}>\"${LOCKFILE}\""; trap _no_more_locking EXIT; }
+_prepare_locking
+_lock xn || { Messages -E "Programa $(basename $0) já em execução. PID: $(cat ${PIDFILE}). Lock: ${LOCKFILE}"; exit 1 ; }
+echo $$ > ${PIDFILE}
 
 # function CheckBin()
 # Função responsável para verificar os programas básicos necessários antes
@@ -192,13 +205,12 @@ function CheckBin() {
       Messages -S "Verificação concluída com sucesso."
       Sleep 2
       Nl
+      return 0
    else
       Messages -E "Programa interrompido. Depedência necessária ou binário não localizado."
       Nl
       exit 1
    fi
-
-   Debug 1 "Fim da função $FUNCNAME"
 }
 
 
@@ -252,8 +264,8 @@ function CheckDir() {
       Debug 2 "Valor do \$1: ${1}"
       case "${1}" in
          -c | --create )   Create=true;;
-         -w | --write ) Write=true;;
-         *)              Dir="${1}";;
+         -w | --write )    Write=true;;
+         *)                Dir="${1}";;
       esac
       shift
    done
