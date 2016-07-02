@@ -74,6 +74,7 @@
 #
 # Versão 1.4.1: 2016.07.02, João Arquimedes:
 #               - Adicionado controle de execução, travando o processo com lock e PID.
+#               - Suportando backup de pastas e arquivos
 #
 #
 # Joao Costa, Outubro de 2014
@@ -237,6 +238,26 @@ function GetOSVersion() {
    return 0
 }
 
+# Function CheckFile()
+# Funçào com objetivo de verificar se o arquivo existe e se é válido para
+# realizar o backup
+# Recebe como parâmetro o nome do arquivo.
+# Exemplo:
+# ChechFile "/var/log/messages"
+function CheckFile() {
+   Debug 1 "Iniciando a função $FUNCNAME"
+
+   Debug 2 "Validando arquivo com a opção -f do if. Se é um arquivo normal"
+   if [[ -f $1 ]]
+   then
+      Debug 3 "condição then. Opção validada como verdade. return 0"
+      return 0 
+   else
+      Debug 3 "condição else. Opção validada como falso. return 1"
+      return 1
+   fi
+}
+
 
 # function CheckDir()
 # Função com objetivo de verificar e criar o diretório.
@@ -273,7 +294,6 @@ function CheckDir() {
    Debug 2 "Saiu do while. Valores das variáveis locais: \$Create: ${Create}. \$Write: ${Write}. \$Dir: ${Dir}"
 
    Debug 2 "Checando se o parâmetro do diretório é válido. Parâmetro: \"${Dir}\""
-   Messages -L "Verificando diretório: ${Dir}"
    if [[ ! "${Dir}" =~ ^(\/|\.|_)?{1}[\.]?{1}[A-Za-z0-9]+ ]]
    then
       Debug 3 "Parâmetro do diretório inválido: \"${Dir}\""
@@ -287,7 +307,6 @@ function CheckDir() {
    if [ -d "${Dir}" ]
    then
       Debug 2 "Sucesso na verificação."
-      Messages -S "Diretório existente."
       Sleep 0.5
 
       if [ "${Write}" = true ]; then
@@ -314,7 +333,7 @@ function CheckDir() {
       Sleep 2
    else
       Debug 2 "Falha na verificação, diretório não existe."
-      Messages -A "Diretório inexistente."
+      #Messages -A "Diretório inexistente."
       Sleep 2
 
       if [ "${Create}" = true ]
@@ -495,43 +514,52 @@ function backupRotate() {
 
 # function LocalBackup()
 # Função com objetivo de realizar o backup local, salvando
-# no dretório especificado na variável no início do script.
+# no dretório especificado na variável $BKP_DIR.
 function LocalBackup() {
    Debug 1 "Iniciando a função $FUNCNAME"
 
-   Messages -L "Iniciando backup local."
-   WriteLog "Iniciando backup local"
+   Messages -L "Validando caminhos a serem realizados os backups."
+   WriteLog "Validando caminhos a serem realizados os backups."
    Sleep 2
 
    # Declarando array
-   declare -a allowDir
+   declare -a allowBackup
    local index=0
 
-   # Função local para receber como parâmetros os diretórios a serem compactados.
-   function localCheckDir() {
-      WriteLog "Verificando diretórios a serem compactados"
+   # Função local para receber como parâmetros os diretórios e arquivos a serem compactados.
+   function localCheckBackup() {
       Debug 2 "Entrando no while"
       while test -n "${1}"; do
-         Debug 3 "Verificando diretórios ${1} com a função CheckDir."
-         CheckDir "${1}"
-         if [ $? = 0 ]; then
-            allowDir[${index}]="${1}"
-            Debug 4 "Diretório ${1} OK. Adicionado ao array allowDir. Valordo array: ${allowDir[$index]}"
-            WriteLog "Diretório OK... ${1}"
+         Debug 3 "Verificando diretórios/arquivos ${1} com a função CheckDir e CheckFile."
+
+         if CheckDir "${1}"
+         then
+            Debug 4 "Caminho ${1} OK. Adicionado ao array allowBackup. Valordo array: ${allowBackup[$index]}"
+            allowBackup[${index}]="${1}"
+            Messages -S "Validado: ${1}"
+            WriteLog "Validado: ${1}"
+            let "index++"
+         elif CheckFile "${1}"
+         then
+            Debug 4 "Caminho ${1} OK. Adicionado ao array allowBackup. Valordo array: ${allowBackup[$index]}"
+            allowBackup[${index}]="${1}"
+            Messages -S "Validado: ${1}"
+            WriteLog "Validado: ${1}"
             let "index++"
          else
-            WriteLog "Diretório inválido... ${1}"
+            Messages -W "Caminho desconhecido para backup -> ${1}"
+            WriteLog --error "Caminho desconhecido para backup -> ${1}"
          fi
          shift
       done
-      Debug 2 "Saiu do while. Valor do Array allowDir: ${allowDir[*]}"
+      Debug 2 "Saiu do while. Valor do Array allowBackup: ${allowBackup[*]}"
    }
 
-   # Executando função local para verificação dos diretórios
-   localCheckDir ${BKP_DIR}
+   # Executando função local para verificação dos diretórios/arquivos
+   localCheckBackup ${BKP_DIR}
 
    Debug 2 "Testando se o array é nulo com test -n"
-   if [ -n "${allowDir[*]}" ]; then
+   if [ -n "${allowBackup[*]}" ]; then
       Debug 3 "Teste OK. Array não é nulo."
       Messages -S "Verificação concluída com sucesso."
       WriteLog "Verificação concluída com sucesso."
@@ -550,8 +578,8 @@ function LocalBackup() {
       # Rotacionando arquivos
       backupRotate ${RETENTION_LOCAL} ${LOCAL_PATH}
 
-      Messages -L "Compactando diretórios ${allowDir[*]}"
-      WriteLog "Compactando diretórios ${allowDir[*]}"
+      Messages -L "Compactando arquivos ${allowBackup[*]}"
+      WriteLog "Compactando arquivos ${allowBackup[*]}"
       Sleep 2
 
       # Tratando caminho absoluto para hospedagem do arquivo
@@ -559,15 +587,19 @@ function LocalBackup() {
 
       if [[ $(GetOSVersion) = "CentOS 5" ]]; then
          Debug 3 "CentOS 5 detectado..."
-         Debug 3 "Compactando diretórios com comando: tar -czf ${path} ${allowDir[*]} ${BKP_IGN}"
-         tar -czf ${path} ${allowDir[*]} ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
-         Messages -S "Arquivo salvo em ${path}"
-         Sleep
+         Debug 3 "Compactando arquivos com comando: tar -czf ${path} ${allowBackup[*]} ${BKP_IGN}"
+         tar -czf ${path} ${allowBackup[*]} ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
       else
-         Debug 3 "Compactando diretórios com comando: tar -czf ${path} ${allowDir[*]} --exclude-backups --exclude-caches-all --exclude-vcs --ignore-failed-read --ignore-command-error ${BKP_IGN}"
-         tar -czf ${path} ${allowDir[*]} --exclude-backups --exclude-caches-all --ignore-failed-read --ignore-command-error ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
-         Messages -S "Arquivo salvo em ${path}"
-         Sleep
+         Debug 3 "Compactando arquivos com comando: tar -czf ${path} ${allowBackup[*]} --exclude-backups --exclude-caches-all --exclude-vcs --ignore-failed-read --ignore-command-error ${BKP_IGN}"
+         tar -czf ${path} ${allowBackup[*]} --exclude-backups --exclude-caches-all --ignore-failed-read --ignore-command-error --absolute-names ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
+         if [ $? = 0 ]; then
+            Messages -S "Arquivo salvo em ${path}"
+            Sleep
+         else
+            Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado"
+            WriteLog --error "Erro ao realizar o backup com o comando tar. Backup cancelado"
+            exit 1
+         fi
       fi
 
       md5Sum=$(md5sum ${path})
@@ -577,7 +609,7 @@ function LocalBackup() {
          Sleep
       else
          Messages -E "Erro na verificação do arquivo de backup. Backup cancelado"
-         WriteLog "Erro na verificação do arquivo de backup. Backup cancelado"
+         WriteLog --error "Erro na verificação do arquivo de backup com md5sum. Backup cancelado"
          exit 1
       fi
       
@@ -590,8 +622,8 @@ function LocalBackup() {
       return 0
    fi
 
-   Messages -E "Nenhum diretório válido para compactar. Backup cancelado."
-   WriteLog "Nenhum diretório válido para compactar. Backup cancelado."
+   Messages -E "Nenhum diretório/arquivo válido para compactar. Backup cancelado."
+   WriteLog "Nenhum diretório/arquivo válido para compactar. Backup cancelado."
    Debug 1 "Fim da função $FUNCNAME. Saindo do script com saída 1"
    exit 1
 }
@@ -898,7 +930,7 @@ function AddCommand(){
 clear
 Messages "------------------------------"
 Messages " Iniciando Programa de Backup"
-Messages "$(grep '^# Versão ' "$0" | tail -1 | cut -d : -f 1 | tr -d \#)"
+Messages "$(grep '^# Versão ' "$0" | tail -1 | cut -d : -f 1 | tr -d \#). PID: $(cat ${PIDFILE})"
 Messages " Linux: $(GetOSVersion)"
 Messages "------------------------------"
 sleep 1; Nl
