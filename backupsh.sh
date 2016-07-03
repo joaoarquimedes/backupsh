@@ -588,7 +588,15 @@ function LocalBackup() {
       # Tratando caminho absoluto para hospedagem do arquivo
       [[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}${COMPACT_FILE}" || path="${LOCAL_PATH}/${COMPACT_FILE}"
 
-      [[ "${Partial}" = true ]] && { local tarOPTS='--newer-mtime='2 days ago'' ; } || { local tarOPTS="" ; }
+      if [[ "${Partial}" = true ]]
+      then
+         local path="${path}-Partial.tgz"
+         local tarOPTS='--newer-mtime='2 days ago''
+      else
+         local path="${path}-Full.tgz"
+         local tarOPTS=""
+      fi
+
       local tarToCentOS5="tar -czf ${path} ${allowBackup[*]} ${tarOPTS} ${BKP_IGN}"
       local tarToNewOS="tar -czf ${path} ${allowBackup[*]} --exclude-backups --exclude-caches-all --ignore-failed-read --ignore-command-error --absolute-names ${tarOPTS} ${BKP_IGN}"
 

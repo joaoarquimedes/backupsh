@@ -11,7 +11,7 @@ DATESTAMP=$(date +"%Y%m%d-%H%M")
 # Diretório para armazenamento do backup local
 LOCAL_PATH="/var/backups/backupsh"
 # Nome do arquivo a ser gerado após compactado
-COMPACT_FILE="${DATESTAMP}-$(hostname)-App.tgz"
+COMPACT_FILE="${DATESTAMP}-$(hostname)-App"
 # Diretórios/arquivos a serem realizados o backup. Exemplo: /etc /opt /var/log/messages
 BKP_DIR="/opt /etc"
 # Ignorar diretório para não ser realizado backup. Exemplo:
