@@ -588,6 +588,9 @@ function LocalBackup() {
       # Tratando caminho absoluto para hospedagem do arquivo
       [[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}${COMPACT_FILE}" || path="${LOCAL_PATH}/${COMPACT_FILE}"
 
+      # Tratando nome do arquivo
+      [[ "${path}" =~ (tar\.gz|\.tgz|\.gz)$ ]] && path=$(echo $path | sed -r 's/(\.tgz|\.tar\.gz|\.gz)$//')
+
       if [[ "${Partial}" = true ]]
       then
          local path="${path}-Partial.tgz"
@@ -603,7 +606,7 @@ function LocalBackup() {
       if [[ $(GetOSVersion) = "CentOS 5" ]]; then
          Debug 3 "CentOS 5 detectado..."
          Debug 3 "Compactando arquivos com comando: ${tarToCentOS5}"
-         [[ "${Partial}" = true ]] && Messages -A "Realizando backup parcial"
+         [[ "${Partial}" = true ]] && Messages -C "Realizando backup parcial"
          ${tarToCentOS5} 2>> ${LOG_FILE_ERROR}
          if [ $? = 0 ]; then
             Messages -S "Arquivo salvo em ${path}"
@@ -615,7 +618,7 @@ function LocalBackup() {
          fi
       else
          Debug 3 "Compactando arquivos com comando: ${tarToNewOS}"
-         [[ "${Partial}" = true ]] && Messages -A "Realizando backup parcial"
+         [[ "${Partial}" = true ]] && Messages -C "Realizando backup parcial"
          ${tarToNewOS} 2>> ${LOG_FILE_ERROR}
          if [ $? = 0 ]; then
             Messages -S "Arquivo salvo em ${path}"
