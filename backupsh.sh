@@ -166,7 +166,7 @@ fi
 
 # Gera o PID do programa e cria o arquivo lock
 PIDFILE="/var/run/$(basename $0).pid"
-LOCKFILE="/var/run/lock/$(basename $0).lock"
+LOCKFILE="/var/lock/$(basename $0).lock"
 LOCKFD=99
 _lock()             { flock -$1 $LOCKFD; }
 _no_more_locking()  { _lock u; _lock xn && rm -f ${LOCKFILE} && rm -r ${PIDFILE}; }
@@ -610,6 +610,7 @@ function LocalBackup() {
          ${tarToCentOS5} 2>> ${LOG_FILE_ERROR}
          if [ $? = 0 ]; then
             Messages -S "Arquivo salvo em ${path}"
+            WriteLog "Arquivo salvo em: ${path}"
             Sleep
          else
             Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado"
@@ -621,7 +622,8 @@ function LocalBackup() {
          [[ "${Partial}" = true ]] && Messages -C "Realizando backup parcial"
          ${tarToNewOS} 2>> ${LOG_FILE_ERROR}
          if [ $? = 0 ]; then
-            Messages -S "Arquivo salvo em ${path}"
+            Messages -S "Arquivo salvo em: ${path}"
+            WriteLog "Arquivo salvo em: ${path}"
             Sleep
          else
             Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado"
@@ -630,7 +632,7 @@ function LocalBackup() {
          fi
       fi
 
-      md5Sum=$(md5sum ${path})
+      local md5Sum=$(md5sum ${path} | cut -d " " -f 1)
       if [ $? = 0 ]; then
          WriteLog "MD5: ${md5Sum}"
          Messages -I "MD5: ${md5Sum}"
@@ -641,8 +643,9 @@ function LocalBackup() {
          exit 1
       fi
       
-      WriteLog "Size: $(du -h ${path})"
-      Messages -I "Size: $(du -h ${path})"
+      local size=$(du -h ${path} | tr '\t' ' ' | cut -d " " -f1)
+      WriteLog "Size: ${size}"
+      Messages -I "Size: ${size}"
       Sleep
       
       Debug 1 "Saindo da função $FUNCNAME com retorno 0"
