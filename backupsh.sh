@@ -75,6 +75,7 @@
 # Versão 1.4.1: 2016.07.02, João Arquimedes:
 #               - Adicionado controle de execução, travando o processo com lock e PID.
 #               - Suportando backup de pastas e arquivos
+#               - Suporte a backup parcial -p | --partial
 #
 #
 # Joao Costa, Outubro de 2014
@@ -109,6 +110,7 @@ Uso: $(basename "$0") [OPÇÕES]
    -l, --log      Habilita e gera log gravando em arquivo.
    -s, --sleep    Habilita sleep, dando um tempo entre as execuções dos comandos. Funciona em conjunto com -v
    -v, --verbose  Habilita modo verboso, apresentando mensagens na saída padrão.
+   -p, --partial  Realiza backup parcial somente dos arquivos alterados recentemente.
 
    -h, --help     Mostra opções e finaliza
    -V, --version  Mostra versão e finaliza
@@ -134,6 +136,7 @@ do
       -l | --log)       GravaLog=1;;
       -v | --verbose)   Verbose=1;;
       -s | --sleep)     Sleep=1;;
+      -p | --partial)   Partial=true;;
       -h | --help)
          echo "$MENSAGEM_USO"
          exit 0
@@ -585,13 +588,27 @@ function LocalBackup() {
       # Tratando caminho absoluto para hospedagem do arquivo
       [[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}${COMPACT_FILE}" || path="${LOCAL_PATH}/${COMPACT_FILE}"
 
+      [[ "${Partial}" = true ]] && { local tarOPTS='--newer-mtime='2 days ago'' ; } || { local tarOPTS="" ; }
+      local tarToCentOS5="tar -czf ${path} ${allowBackup[*]} ${tarOPTS} ${BKP_IGN}"
+      local tarToNewOS="tar -czf ${path} ${allowBackup[*]} --exclude-backups --exclude-caches-all --ignore-failed-read --ignore-command-error --absolute-names ${tarOPTS} ${BKP_IGN}"
+
       if [[ $(GetOSVersion) = "CentOS 5" ]]; then
          Debug 3 "CentOS 5 detectado..."
-         Debug 3 "Compactando arquivos com comando: tar -czf ${path} ${allowBackup[*]} ${BKP_IGN}"
-         tar -czf ${path} ${allowBackup[*]} ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
+         Debug 3 "Compactando arquivos com comando: ${tarToCentOS5}"
+         [[ "${Partial}" = true ]] && Messages -A "Realizando backup parcial"
+         ${tarToCentOS5} 2>> ${LOG_FILE_ERROR}
+         if [ $? = 0 ]; then
+            Messages -S "Arquivo salvo em ${path}"
+            Sleep
+         else
+            Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado"
+            WriteLog --error "Erro ao realizar o backup com o comando tar. Backup cancelado"
+            exit 1
+         fi
       else
-         Debug 3 "Compactando arquivos com comando: tar -czf ${path} ${allowBackup[*]} --exclude-backups --exclude-caches-all --exclude-vcs --ignore-failed-read --ignore-command-error ${BKP_IGN}"
-         tar -czf ${path} ${allowBackup[*]} --exclude-backups --exclude-caches-all --ignore-failed-read --ignore-command-error --absolute-names ${BKP_IGN} 2>> ${LOG_FILE_ERROR}
+         Debug 3 "Compactando arquivos com comando: ${tarToNewOS}"
+         [[ "${Partial}" = true ]] && Messages -A "Realizando backup parcial"
+         ${tarToNewOS} 2>> ${LOG_FILE_ERROR}
          if [ $? = 0 ]; then
             Messages -S "Arquivo salvo em ${path}"
             Sleep
