@@ -101,7 +101,7 @@ BIN="rm tar id wc gzip date mkdir find chown chmod hostname md5sum flock"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} mysql mysqldump"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} pg_dump psql vacuumdb"
 [ "${WIN_BKP_REMOTE}" = "Yes" ] && BIN="${BIN} mount.cifs mount umount rsync"
-[ "${SEND_MAIL}" = "Yes" ] && BIN="${BIN} mailx"
+[ "${SEND_MAIL}" = "Yes" -a ! "$(grep "CentOS release 5" /etc/redhat-release)" ] && BIN="${BIN} mailx" || BIN="${BIN} nail"
 
 MENSAGEM_USO="
 Uso: $(basename "$0") [OPÇÕES]
@@ -278,7 +278,9 @@ ${1}
 "
 
    # Realiza o envio da mensagem
-   echo "${Content}" | mailx -s "${SMTP_SUBJECT}" -S smtp="smtp://${SMTP_HOST}:${SMTP_PORT}" -S from="${SMTP_SENDER_NAME} <${SMTP_SENDER}>" ${SMTP_RECEIVER}
+   [ "$(GetOSVersion)" != "CentOS 5" ] && { local Command="mailx" ; } || { local Command="nail" ; }
+
+   echo "${Content}" | $Command -s "${SMTP_SUBJECT}" -S smtp="smtp://${SMTP_HOST}:${SMTP_PORT}" -S from="${SMTP_SENDER_NAME} <${SMTP_SENDER}>" ${SMTP_RECEIVER}
 }
 
 
