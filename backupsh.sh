@@ -76,6 +76,7 @@
 #               - Adicionado controle de execução, travando o processo com lock e PID.
 #               - Suportando backup de pastas e arquivos
 #               - Suporte a backup parcial -p | --partial
+#               - Adicionado a funcionalidade de notificação por email com a função SendMail
 #
 #
 # Joao Costa, Outubro de 2014
@@ -100,6 +101,7 @@ BIN="rm tar id wc gzip date mkdir find chown chmod hostname md5sum flock"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} mysql mysqldump"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} pg_dump psql vacuumdb"
 [ "${WIN_BKP_REMOTE}" = "Yes" ] && BIN="${BIN} mount.cifs mount umount rsync"
+[ "${SEND_MAIL}" = "Yes" ] && BIN="${BIN} mailx"
 
 MENSAGEM_USO="
 Uso: $(basename "$0") [OPÇÕES]
@@ -240,6 +242,40 @@ function GetOSVersion() {
    echo $OS
    return 0
 }
+
+# function SenMail()
+# Função com objetivo de realizar notificações por email
+# Recebe como parâmetro o assunto e o conteúdo da mensagem, nesta ordem.
+# Exemplo:
+# SendMail "Falha no backup" "Não foi possível realizar backup do arquivo desejado"
+function SendMail() {
+   [ "${SEND_MAIL}" = "Yes" ] || return
+   [ ! -z "${1}" ] || return
+   [ ! -z "${2}" ] || return
+
+   Messages -A "Realizando notificação por email"
+   Messages -I "Destinatário: ${SMTP_RECEIVER}"
+
+   WriteLog "Notificando usuário por e-amil..."
+   WriteLog "Destinatário: ${SMTP_RECEIVER}"
+   WriteLog "Assunto: ${2}"
+   WriteLog "Mensagem: ${1}"
+
+   local CurrentDate=$(date "+%Y/%m/%d %H:%M:%S")
+   local CurrentUser=$(id -u -n)
+   local Content="
+Notificação do Script de Backup $(basename $0)
+Date: $CurrentDate
+Host: $(hostname)
+------------------------------------------------------------------------------
+${2}
+------------------------------------------------------------------------------
+"
+
+   # Realiza o envio da mensagem
+   echo "${Content}" | mailx -s "$(hostname): ${1}" -S smtp="smtp://${SMTP_HOST}:${SMTP_PORT}" -S from="${SMTP_SENDER_NAME} <${SMTP_SENDER}>" ${SMTP_RECEIVER}
+}
+
 
 # Function CheckFile()
 # Funçào com objetivo de verificar se o arquivo existe e se é válido para
