@@ -113,6 +113,7 @@ Uso: $(basename "$0") [OPÇÕES]
    -s, --sleep    Habilita sleep, dando um tempo entre as execuções dos comandos. Funciona em conjunto com -v
    -v, --verbose  Habilita modo verboso, apresentando mensagens na saída padrão.
    -p, --partial  Realiza backup parcial somente dos arquivos alterados recentemente.
+   --mailtest     Envia um email de teste.
 
    -h, --help     Mostra opções e finaliza
    -V, --version  Mostra versão e finaliza
@@ -139,6 +140,7 @@ do
       -v | --verbose)   Verbose=1;;
       -s | --sleep)     Sleep=1;;
       -p | --partial)   Partial=true;;
+      --mailtest)       MailTest=true;;
       -h | --help)
          echo "$MENSAGEM_USO"
          exit 0
@@ -160,11 +162,13 @@ do
    shift
 done
 
+
 # Verifica se o usuário é root
 if [ "$EUID" -ne 0 ]; then
    Messages -E "Favor, executar este script como root"
    exit 1
 fi
+
 
 # Gera o PID do programa e cria o arquivo lock
 PIDFILE="/var/run/$(basename $0).pid"
@@ -176,6 +180,7 @@ _prepare_locking()  { eval "exec ${LOCKFD}>\"${LOCKFILE}\""; trap _no_more_locki
 _prepare_locking
 _lock xn || { Messages -E "Programa $(basename $0) já em execução. PID: $(cat ${PIDFILE}). Lock: ${LOCKFILE}"; exit 1 ; }
 echo $$ > ${PIDFILE}
+
 
 # function CheckBin()
 # Função responsável para verificar os programas básicos necessários antes
@@ -214,6 +219,7 @@ function CheckBin() {
       return 0
    else
       Messages -E "Programa interrompido. Depedência necessária ou binário não localizado."
+      SendMail "Backup não realizado. Depedência necessária ou binário não localizado."
       Nl
       exit 1
    fi
@@ -243,22 +249,21 @@ function GetOSVersion() {
    return 0
 }
 
-# function SenMail()
+
+# function SendMail()
 # Função com objetivo de realizar notificações por email
-# Recebe como parâmetro o assunto e o conteúdo da mensagem, nesta ordem.
+# Recebe como parâmetro o conteúdo da mensagem.
 # Exemplo:
-# SendMail "Falha no backup" "Não foi possível realizar backup do arquivo desejado"
+# SendMail "Não foi possível realizar backup do arquivo desejado"
 function SendMail() {
    [ "${SEND_MAIL}" = "Yes" ] || return
    [ ! -z "${1}" ] || return
-   [ ! -z "${2}" ] || return
 
    Messages -A "Realizando notificação por email"
    Messages -I "Destinatário: ${SMTP_RECEIVER}"
 
    WriteLog "Notificando usuário por e-amil..."
    WriteLog "Destinatário: ${SMTP_RECEIVER}"
-   WriteLog "Assunto: ${2}"
    WriteLog "Mensagem: ${1}"
 
    local CurrentDate=$(date "+%Y/%m/%d %H:%M:%S")
@@ -268,12 +273,12 @@ Notificação do Script de Backup $(basename $0)
 Date: $CurrentDate
 Host: $(hostname)
 ------------------------------------------------------------------------------
-${2}
+${1}
 ------------------------------------------------------------------------------
 "
 
    # Realiza o envio da mensagem
-   echo "${Content}" | mailx -s "$(hostname): ${1}" -S smtp="smtp://${SMTP_HOST}:${SMTP_PORT}" -S from="${SMTP_SENDER_NAME} <${SMTP_SENDER}>" ${SMTP_RECEIVER}
+   echo "${Content}" | mailx -s "${SMTP_SUBJECT}" -S smtp="smtp://${SMTP_HOST}:${SMTP_PORT}" -S from="${SMTP_SENDER_NAME} <${SMTP_SENDER}>" ${SMTP_RECEIVER}
 }
 
 
@@ -544,9 +549,10 @@ function backupRotate() {
       fi
 
    else
-      Messages -E "Parâmetro inválido para rotacionar o backup. Backup cancelado"
-      WriteLog "Parâmetro inválido para rotacionar o backup. Backup cancelado"
-      exit 1
+      Messages -E "Parâmetro inválido para rotacionar o backup. Favor, verificar as opções utilizadas."
+      WriteLog "Parâmetro inválido para rotacionar o backup. Favor, verificar as opções utilizadas."
+      SendMail "Parâmetro inválido para rotacionar o backup. Favor, verificar as opções utilizadas."
+      return 1
    fi
 }
 
@@ -608,8 +614,9 @@ function LocalBackup() {
       WriteLog "Verificando destino para hospedagem do backup local: ${LOCAL_PATH}"
       CheckDir "${LOCAL_PATH}" --create --write
       if [ $? != 0 ]; then
-         Messages -E "Backup cancelado, destino para hospedagem com erro"
-         WriteLog "Backup cancelado, destino para hospedagem com erro"
+         Messages -E "Backup cancelado, destino para hospedagem com erro."
+         WriteLog "Backup cancelado, destino para hospedagem com erro."
+         SendMail "Backup cancelado, destino para hospedagem com erro."
          Debug 1 "Fim da função $FUNCNAME. Saindo do script com saída 1"
          exit 1
       fi
@@ -649,8 +656,9 @@ function LocalBackup() {
             WriteLog "Arquivo salvo em: ${path}"
             Sleep
          else
-            Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado"
-            WriteLog --error "Erro ao realizar o backup com o comando tar. Backup cancelado"
+            Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado."
+            WriteLog --error "Erro ao realizar o backup com o comando tar. Backup cancelado."
+            SendMail "Erro ao realizar o backup com o comando tar. Backup cancelado."
             exit 1
          fi
       else
@@ -664,6 +672,7 @@ function LocalBackup() {
          else
             Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado"
             WriteLog --error "Erro ao realizar o backup com o comando tar. Backup cancelado"
+            SendMail "Erro ao realizar o backup com o comando tar. Backup cancelado."
             exit 1
          fi
       fi
@@ -674,9 +683,10 @@ function LocalBackup() {
          Messages -I "MD5: ${md5Sum}"
          Sleep
       else
-         Messages -E "Erro na verificação do arquivo de backup. Backup cancelado"
-         WriteLog --error "Erro na verificação do arquivo de backup com md5sum. Backup cancelado"
-         exit 1
+         Messages -E "Erro na verificação do arquivo de backup."
+         WriteLog --error "Erro na verificação do arquivo de backup com md5sum. Necessita de análise técnica."
+         SendMail "Erro na verificação do arquivo de backup com md5sum. Necessita de análise técnica."
+         return 1
       fi
       
       local size=$(du -h ${path} | tr '\t' ' ' | cut -d " " -f1)
@@ -691,6 +701,7 @@ function LocalBackup() {
 
    Messages -E "Nenhum diretório/arquivo válido para compactar. Backup cancelado."
    WriteLog "Nenhum diretório/arquivo válido para compactar. Backup cancelado."
+   SendMail "Nenhum diretório/arquivo válido para compactar. Backup cancelado."
    Debug 1 "Fim da função $FUNCNAME. Saindo do script com saída 1"
    exit 1
 }
@@ -722,6 +733,7 @@ function DatabaseMySQL() {
    if [[ ! $(getDatabases) ]]; then
       Messages -E "Erro ao listar as bases de dados."
       WriteLog --error "Erro ao listar as bases de dados."
+      SendMail "Erro ao listar as bases de dados MySQL."
       Nl
       return 1
    fi   
@@ -752,6 +764,7 @@ function DatabaseMySQL() {
          else
             Messages -W "Erro ao realizar o dump da base de dados: ${db}"
             WriteLog --error "Erro ao realizar backup da base de dados: ${db}"
+            SendMail "Erro ao realizar backup da base de dados (MySQL): ${db}"
             error=1
          fi
       fi
@@ -788,6 +801,7 @@ function DatabasePostgreSQL() {
    if [[ ! $(getDatabases) ]]; then
       Messages -E "Erro ao listar as bases de dados."
       WriteLog --error "Erro ao listar as bases de dados."
+      SendMail "Erro ao listar as bases de dados (PostgreSQL)."
       Nl
       return 1
    fi
@@ -807,6 +821,7 @@ function DatabasePostgreSQL() {
       else
          Messages -E "Erro ao realizar o vacuum na base ${db}"
          WriteLog --error "Erro ao realizar o vacuum na base ${db}"
+         SendMail "Erro ao realizar o vacuum na base (PostgreSQL): ${db}"
          error=1
       fi
 
@@ -828,6 +843,7 @@ function DatabasePostgreSQL() {
       else
          Messages -E "Erro ao realizar o dump na base ${db}"
          WriteLog --error "Erro ao realizar o dump na base ${db}"
+         SendMail "Erro ao realizar o dump na base (PostgreSQL): ${db}"
          error=1
       fi
    done
@@ -852,15 +868,17 @@ function MountDir() {
    Sleep
    CheckDir "${WIN_SRC_MOUNT}" --create
    if [ $? != 0 ]; then
-      Messages -E "Erro ao verificar o ponto de montagem. Backup cancelado"
-      WriteLog "Erro ao verificar o ponto de montagem. Backup cancelado"
-      Debug 1 "Erro gerado pelo último comando executado, saindo do script com saída 1"
-      exit 1
+      Messages -E "Erro ao verificar o ponto de montagem."
+      WriteLog "Erro ao verificar o ponto de montagem."
+      SendMail "Erro ao verificar/criar o ponto de montagem para backup remoto."
+      Debug 1 "Erro gerado pelo último comando executado, retornando 1"
+      return 1
    fi
 
    Messages -L "Mapeando diretório \"${WIN_DST_MOUNT}\" do servidor ${WIN_SERVER}"
+   Debug 2 "Verificando ponto de montagem com: grep ${WIN_SRC_MOUNT}"
    Sleep
-   if [ ! "$(mount | grep ${WIN_SERVER}/${WIN_DST_MOUNT})" ]; then
+   if [ ! "$(mount | grep ${WIN_SRC_MOUNT})" ]; then
       Messages -I "Montando diretório"
       WriteLog "Montando diretório"
       Debug 2 "Montando diretório. Comando: mount -t cifs //${WIN_SERVER}/${WIN_DST_MOUNT} ${WIN_SRC_MOUNT} -o username=${WIN_USER},password=${WIN_PASS},iocharset=utf8"
@@ -872,16 +890,18 @@ function MountDir() {
          Sleep
          CheckDir "${WIN_SRC_MOUNT}" --write
          if [ $? != 0 ]; then
-            Messages -E "Diretório sem permissão de escrita. Backup cancelado."
-            WriteLog "Diretório sem permissão de escrita. Backup cancelado."
-            Debug 3 "Erro do último comando executado. saindo do script com saída 1"
-            exit 1
+            Messages -E "Diretório sem permissão de escrita."
+            WriteLog "Diretório sem permissão de escrita."
+            SendMail "Diretório para backup remoto sem permissão de escrita."
+            Debug 3 "Erro do último comando executado. return 1"
+            return 1
          fi
       else
          Messages -E "Erro na montagem do diertório do servidor ${WIN_SERVER}"
          WriteLog "Erro na montagem do diertório do servidor ${WIN_SERVER}"
-         Debug 3 "Erro do último comando executado. saindo do script com saída 1"
-         exit 1
+         SendMail "Erro na montagem do diertório do servidor ${WIN_SERVER}"
+         Debug 3 "Erro do último comando executado. return 1"
+         return 1
       fi
    else
       Messages -S "Diretório já montado. Verificando permissão de escrita."
@@ -889,10 +909,11 @@ function MountDir() {
       Sleep
       CheckDir "${WIN_SRC_MOUNT}" --write
       if [ $? != 0 ]; then
-         Messages -E "Diretório sem permissão de escrita. Backup cancelado."
-         WriteLog "Diretório sem permissão de escrita. Backup cancelado."
-         Debug 3 "Erro do último comando executado. saindo do script com saída 1"
-         exit 1
+         Messages -E "Diretório sem permissão de escrita."
+         WriteLog "Diretório sem permissão de escrita."
+         SendMail "Diretório para backup remoto sem permissão de escrita."
+         Debug 3 "Erro do último comando executado. return 1"
+         return 1
       fi
    fi
    WriteLog "Diretório OK"
@@ -954,14 +975,16 @@ function RemoteSync() {
          Nl
          return 0
       else
-         Messages -E "Erro no processo do sincronismo. Backup cancelado"
-         WriteLog "Erro no processo do sincronismo. Backup cancelado"
-         exit 1
+         Messages -E "Erro no processo do sincronismo."
+         WriteLog "Erro no processo do sincronismo."
+         SendMail "Erro no processo do sincronismo com backup remoto."
+         return 1
       fi
    else
-      Messages -E "Erro na verificação do diretório para backup remoto. Backup cancelado"
-      WriteLog "Erro na verificação do diretório para backup remoto. Backup cancelado"
-      exit 1
+      Messages -E "Erro na verificação do diretório para backup remoto."
+      WriteLog "Erro na verificação do diretório para backup remoto."
+      SendMail "Erro na verificação do diretório para backup remoto."
+      return 1
    fi
 }
 
@@ -1003,10 +1026,22 @@ Messages "------------------------------"
 sleep 1; Nl
 
 CheckBin
+
+# Verifica se necessita somente de um teste de envio de email
+if [ "${MailTest}" = "true" -a "${SEND_MAIL}" != "Yes" ]
+then
+   Messages -E "Favor, configurar o arquivo backupsh.conf antes de realizar teste de envio de email."
+   exit 1
+elif [ "${MailTest}" = "true" -a "${SEND_MAIL}" = "Yes" ]
+then
+   Messages -C "Realizando somente teste de envio de email"
+   SendMail "Email enviado como testes (opção $(basename $0) --mailtest).
+Favor, desconsiderar esta notificação."
+   exit 0
+fi
+
 WriteLog --checkdir; Nl
-
 WriteLog "Iniciando o processo de backup."
-
 LocalBackup
 DatabaseMySQL
 DatabasePostgreSQL

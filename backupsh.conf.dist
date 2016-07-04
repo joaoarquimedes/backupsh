@@ -83,6 +83,8 @@ SEND_MAIL="No"
 SMTP_HOST="127.0.0.1"
 # Porta de comunicação
 SMTP_PORT="25"
+# Assunto
+SMTP_SUBJECT="$(basename $0) Notification"
 # Remetente (nome completo)
 SMTP_SENDER_NAME="$(basename $0)"
 # Remetente (email)
