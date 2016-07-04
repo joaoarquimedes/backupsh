@@ -75,6 +75,23 @@ DATABASE_PASS=""
 #   local   all   backupuser   trust
 
 
+# --> Configurações para notificação por email
+# -----------------------------------------------------------------------
+# Realiza envio de emails? [ Yes | No ]
+SEND_MAIL="No"
+# Servidor de email
+SMTP_HOST="127.0.0.1"
+# Porta de comunicação
+SMTP_PORT="25"
+# Remetente (nome completo)
+SMTP_SENDER_NAME="$(basename $0)"
+# Remetente (email)
+SMTP_SENDER="backupsh@localhost"
+# Destinatário (email). Para mais de um destinatário, basta acrescentar outros emails separados por espaço.
+# Exemplo: destinatario1@meudominio.com destinatario2@meudominio.com...
+SMTP_RECEIVER=""
+
+
 # --> Log's
 # -----------------------------------------------------------------------
 # Local onde serão armazenados os log's (DIRETÓRIO). Sem a barra (/) no final.
