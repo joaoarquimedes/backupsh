@@ -699,6 +699,7 @@ function LocalBackup() {
                if [ $? = 0 ]; then
                   Messages -S "Arquivo salvo em ${path}.${ext_file}"
                   WriteLog "Arquivo salvo em ${path}.${ext_file}"
+                  SendMail "Backup realizado com sucesso. Arquivo salvo em ${path}.${ext_file}"
                else
                   Messages -E "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
                   WriteLog "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
@@ -712,6 +713,7 @@ function LocalBackup() {
                if [ $? = 0 ]; then
                   Messages -S "Arquivo salvo em ${path}.${ext_file}"
                   WriteLog "Arquivo salvo em ${path}.${ext_file}"
+                  SendMail "Backup realizado com sucesso. Arquivo salvo em ${path}.${ext_file}"
                else
                   Messages -E "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
                   WriteLog "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
