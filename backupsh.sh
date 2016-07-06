@@ -678,7 +678,7 @@ function LocalBackup() {
          Messages -W "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
          WriteLog --error "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
          SendMail "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
-         [[ -f ${path}.${ext_file} ]] && rm -rf ${path}.tgz
+         [[ -f ${path}.${ext_file} ]] && rm -rf ${path}.${ext_file}
    
          if [ -f "$(which zip)" ]; then
             Messages -I "Realizando a compactação com programa zip"
