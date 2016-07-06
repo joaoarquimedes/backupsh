@@ -78,6 +78,10 @@
 #               - Suporte a backup parcial -p | --partial
 #               - Adicionado a funcionalidade de notificação por email com a função SendMail
 #
+# Versão 1.4.2: 2016.07.05, João Arquimedes:
+#               - Adicionado alternativa de backup com ZIP caso o comando TAR não funcione.
+#               - Ajustado a função backupRotate
+#
 #
 # Joao Costa, Outubro de 2014
 #
@@ -96,7 +100,7 @@ source "${PATH_FULL}/backupsh.conf"
 source "${PATH_FULL}/backupsh.dep"
 
 # Binários a serem verificados antes de dar continuidade no restante da execução do script.
-BIN="rm tar id wc gzip date mkdir find chown chmod hostname md5sum flock"
+BIN="rm tar id wc gzip date mkdir find chown chmod egrep hostname md5sum flock"
 # Complementando o binário caso seja necessário backup do banco de dados
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} mysql mysqldump"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} pg_dump psql vacuumdb"
@@ -272,6 +276,7 @@ function SendMail() {
 Notificação do Script de Backup $(basename $0)
 Date: $CurrentDate
 Host: $(hostname)
+Versão do Script: $(grep '^# Versão ' "$0" | tail -1 | cut -d : -f 1 | tr -d \#)
 ------------------------------------------------------------------------------
 ${1}
 ------------------------------------------------------------------------------
@@ -514,8 +519,9 @@ function backupRotate() {
 
       # Ajustando o valor de n para remover os arquivos
       local newN=$((${n}*24*60-120)) # Convertendo o valor em dia para minutos e diminuindo duas horas
-      local filesToRemoveCount=$(find ${p} -mmin +${newN} -name *$(hostname)*gz | wc -l)
-      local filesToRemove=$(find ${p} -mmin +${newN} -name *$(hostname)*gz)
+
+      local filesToRemoveCount=$(find ${p} -type f -mmin +${newN} | egrep "*.$(hostname)*.*(gz|tar|tgz|zip)$" | wc -l)
+      local filesToRemove=$(find ${p} -type f -mmin +${newN} | egrep "*.$(hostname)*.*(gz|tar|tgz|zip)$")
 
       # Setando a barra no final do diretório
       [[ "${p}" =~ \/$ ]] && path="${p}" || path="${p}/"
@@ -529,19 +535,18 @@ function backupRotate() {
       Debug 3 "Valor da variável \$n: ${n}"
       Debug 3 "Valor da variável \$newN: ${newN}"
       Debug 3 "Valor da variável \$filesToRemoveCount: ${filesToRemoveCount}"
-      Debug 3 "Localizando a quantidade de arquivos a ser rotacionado com o comando: find ${path} -mmin +${newN} -name *$(hostname)*gz"
 
       if [ "${n}" -le "${filesToRemoveCount}" ]
       then
-         Debug 3 "Executando o comando \"find ${path} -mmin +${newN} -name *$(hostname)*gz -exec rm -r {} \;\" para excluir os arquivos antigos"
-      
-         Messages -A "Removendo arquivos: ${filesToRemove}"
-         WriteLog "Removendo arquivos: ${filesToRemove}"
-
-         Debug 3 "Atualizando o alias para o comando rm"
+         Messages -A "Removendo arquivos rotacionados"
+         WriteLog "Removendo arquivos rotacionados"
          alias rm='rm'
-
-         find ${path} -mmin +${newN} -name *$(hostname)*gz -exec rm -rf {} \;
+         for i in ${filesToRemove}
+         do
+            Messages -L "Removido... $i"
+            WriteLog "Removido... $i"
+            rm -rf $i
+         done
          Sleep
          return 0
       else
@@ -633,53 +638,96 @@ function LocalBackup() {
       # Tratando caminho absoluto para hospedagem do arquivo
       [[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}${COMPACT_FILE}" || path="${LOCAL_PATH}/${COMPACT_FILE}"
 
-      # Tratando nome do arquivo
-      [[ "${path}" =~ (tar\.gz|\.tgz|\.gz)$ ]] && path=$(echo $path | sed -r 's/(\.tgz|\.tar\.gz|\.gz)$//')
+      # Tratando nome do arquivo para remover extensão caso apresentado na variável do arquivo conf
+      [[ "${path}" =~ (tar\.gz|\.tgz|\.gz|\.zip)$ ]] && path=$(echo $path | sed -r 's/(\.tgz|\.tar\.gz|\.gz|\.zip)$//')
+
+      # De imediato, definindo a extensão como tgz.
+      local ext_file="tgz"
 
       if [[ "${Partial}" = true ]]
       then
-         local path="${path}-Partial.tgz"
+         local path="${path}-Partial"
          local tarOPTS='--newer-mtime='2 days ago''
       else
-         local path="${path}-Full.tgz"
+         local path="${path}-Full"
          local tarOPTS=""
       fi
 
-      local tarToCentOS5="tar -czf ${path} ${allowBackup[*]} ${tarOPTS} ${BKP_IGN}"
-      local tarToNewOS="tar -czf ${path} ${allowBackup[*]} --exclude-backups --exclude-caches-all --ignore-failed-read --ignore-command-error --absolute-names ${tarOPTS} ${BKP_IGN}"
+      local tarToCentOS5="tar -czf ${path}.${ext_file} ${allowBackup[*]} --ignore-failed-read --ignore-zeros --ignore-case ${tarOPTS} ${BKP_IGN}"
+      local tarToNewOS="tar -czf ${path}.${ext_file} ${allowBackup[*]} --ignore-failed-read --ignore-command-error --absolute-names --exclude-backups --exclude-caches-all ${tarOPTS} ${BKP_IGN}"
 
-      if [[ $(GetOSVersion) = "CentOS 5" ]]; then
-         Debug 3 "CentOS 5 detectado..."
-         Debug 3 "Compactando arquivos com comando: ${tarToCentOS5}"
-         [[ "${Partial}" = true ]] && Messages -C "Realizando backup parcial"
-         ${tarToCentOS5} 2>> ${LOG_FILE_ERROR}
-         if [ $? = 0 ]; then
-            Messages -S "Arquivo salvo em ${path}"
-            WriteLog "Arquivo salvo em: ${path}"
-            Sleep
-         else
-            Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado."
-            WriteLog --error "Erro ao realizar o backup com o comando tar. Backup cancelado."
-            SendMail "Erro ao realizar o backup com o comando tar. Backup cancelado."
-            exit 1
-         fi
+      #Definindo comando a ser executado
+      if [[ $(GetOSVersion) != "CentOS 5" ]]
+      then
+         local compactCommand="${tarToNewOS}"
       else
-         Debug 3 "Compactando arquivos com comando: ${tarToNewOS}"
-         [[ "${Partial}" = true ]] && Messages -C "Realizando backup parcial"
-         ${tarToNewOS} 2>> ${LOG_FILE_ERROR}
-         if [ $? = 0 ]; then
-            Messages -S "Arquivo salvo em: ${path}"
-            WriteLog "Arquivo salvo em: ${path}"
-            Sleep
+         Messages -I "CentOS 5 detectado"
+         local compactCommand="${tarToCentOS5}"
+      fi
+
+      Debug 3 "Compactando arquivos com comando: ${compactCommand}"
+      [[ "${Partial}" = true ]] && Messages -C "Realizando backup parcial"
+
+      # Executando comando tar
+      ${compactCommand} 2>> ${LOG_FILE_ERROR}
+      if [ $? = 0 ]; then
+         Messages -S "Arquivo salvo em ${path}.${ext_file}"
+         WriteLog "Arquivo salvo em: ${path}.${ext_file}"
+         Sleep
+      else
+         Messages -W "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
+         WriteLog --error "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
+         SendMail "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
+         [[ -f ${path}.${ext_file} ]] && rm -rf ${path}.tgz
+   
+         if [ -f "$(which zip)" ]; then
+            Messages -I "Realizando a compactação com programa zip"
+            WriteLog "Realizando a compactação com programa zip"
+
+            # Definindo nova extensão
+            local ext_file="zip"
+
+            # Verificando se o backup é parcial
+            if [[ "${Partial}" = true ]]
+            then
+               Messages -I "Realizando backup com zip somente de arquivos alterados recentemente"
+               WriteLog "Realizando backup com zip somente de arquivos alterados recentemente"
+
+               # Executando comando para compactação
+               #find ${allowBackup[*]} -mtime -2 -exec zip ${path}.${ext_file} '{}' + > /dev/null 2>> ${LOG_FILE_ERROR}
+               zip -ruq ${path}.${ext_file} ${allowBackup[*]} $BKP_IGN > /dev/null 2>> ${LOG_FILE_ERROR}
+               if [ $? = 0 ]; then
+                  Messages -S "Arquivo salvo em ${path}.${ext_file}"
+                  WriteLog "Arquivo salvo em ${path}.${ext_file}"
+               else
+                  Messages -E "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
+                  WriteLog "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
+                  SendMail "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
+                  exit 1
+               fi
+            else
+               # Executando comando zip
+               Debug 3 "Compactando via zip com comando: zip -q ${path}.${ext_file} ${allowBackup[*]} $BKP_IGN"
+               zip -rq ${path}.${ext_file} ${allowBackup[*]} $BKP_IGN > /dev/null 2>> ${LOG_FILE_ERROR}
+               if [ $? = 0 ]; then
+                  Messages -S "Arquivo salvo em ${path}.${ext_file}"
+                  WriteLog "Arquivo salvo em ${path}.${ext_file}"
+               else
+                  Messages -E "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
+                  WriteLog "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
+                  SendMail "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
+                  exit 1
+               fi
+            fi
          else
-            Messages -E "Erro ao realizar o backup com o comando tar. Backup cancelado"
-            WriteLog --error "Erro ao realizar o backup com o comando tar. Backup cancelado"
-            SendMail "Erro ao realizar o backup com o comando tar. Backup cancelado."
+            Messages -E "Programa zip não localizado. Backup cancelado."
+            WriteLog "Programa zip não localizado. Backup cancelado."
+            SendMail "Programa zip não localizado. Backup cancelado."
             exit 1
          fi
       fi
 
-      local md5Sum=$(md5sum ${path} | cut -d " " -f 1)
+      local md5Sum=$(md5sum ${path}.${ext_file} | cut -d " " -f 1)
       if [ $? = 0 ]; then
          WriteLog "MD5: ${md5Sum}"
          Messages -I "MD5: ${md5Sum}"
@@ -691,7 +739,7 @@ function LocalBackup() {
          return 1
       fi
       
-      local size=$(du -h ${path} | tr '\t' ' ' | cut -d " " -f1)
+      local size=$(du -h ${path}.${ext_file} | tr '\t' ' ' | cut -d " " -f1)
       WriteLog "Size: ${size}"
       Messages -I "Size: ${size}"
       Sleep
@@ -1025,7 +1073,7 @@ Messages " Iniciando Programa de Backup"
 Messages "$(grep '^# Versão ' "$0" | tail -1 | cut -d : -f 1 | tr -d \#). PID: $(cat ${PIDFILE})"
 Messages " Linux: $(GetOSVersion)"
 Messages "------------------------------"
-sleep 1; Nl
+Nl
 
 CheckBin
 
