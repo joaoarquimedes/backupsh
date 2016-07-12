@@ -81,6 +81,17 @@
 # Versão 1.4.2: 2016.07.05, João Arquimedes:
 #               - Adicionado alternativa de backup com ZIP caso o comando TAR não funcione.
 #               - Ajustado a função backupRotate
+#               - Removendo arquivo caso ocorra erro no backup
+#
+# Versão 1.4.3: 2016.07.07, João Arquimedes:
+#               - Adicionado verificação de retorno no backup adicional. function AddCommand().
+#               - Adicionado descrição do host e melhoria nas notificações por email.
+#
+# Versão 1.4.4: 2016.07.08, João Arquimedes:
+#               - Alterado a forma do dump do postgres para --format=c
+#
+# Versão 1.4.5: 2016.07.08, João Arquimedes:
+#               - Debug retordo do comando tar.
 #
 #
 # Joao Costa, Outubro de 2014
@@ -274,8 +285,9 @@ function SendMail() {
    local CurrentUser=$(id -u -n)
    local Content="
 Notificação do Script de Backup $(basename $0)
-Date: $CurrentDate
+Data: $CurrentDate
 Host: $(hostname)
+Descrição: ${HOST_DESC}
 Versão do Script: $(grep '^# Versão ' "$0" | tail -1 | cut -d : -f 1 | tr -d \#)
 ------------------------------------------------------------------------------
 ${1}
@@ -520,8 +532,8 @@ function backupRotate() {
       # Ajustando o valor de n para remover os arquivos
       local newN=$((${n}*24*60-120)) # Convertendo o valor em dia para minutos e diminuindo duas horas
 
-      local filesToRemoveCount=$(find ${p} -type f -mmin +${newN} | egrep "*.$(hostname)*.*(gz|tar|tgz|zip)$" | wc -l)
-      local filesToRemove=$(find ${p} -type f -mmin +${newN} | egrep "*.$(hostname)*.*(gz|tar|tgz|zip)$")
+      local filesToRemoveCount=$(find ${p} -type f -mmin +${newN} | egrep "*.$(hostname)*.*(gz|tar|tgz|zip|backup)$" | wc -l)
+      local filesToRemove=$(find ${p} -type f -mmin +${newN} | egrep "*.$(hostname)*.*(gz|tar|tgz|zip|backup)$")
 
       # Setando a barra no final do diretório
       [[ "${p}" =~ \/$ ]] && path="${p}" || path="${p}/"
@@ -670,14 +682,21 @@ function LocalBackup() {
 
       # Executando comando tar
       ${compactCommand} 2>> ${LOG_FILE_ERROR}
-      if [ $? = 0 ]; then
+      if [ true ]; then
+      #if [ $? = 0 ]; then
+      # #################################################################################################################
+      #
+      # LOCAL COMENTADO PARA DEBUGAR OS POSSÍVEIS RETORNOS DO COMANDO TAR.
+      # EXIGE MELHORIA PARA CONSIDERAR SE O COMANDO FOI EXECUTADO COM SUCESSO OU SE HOUVE PENAS MENSAGEM DE ALERTA.
+      #
+      # #################################################################################################################
+      
          Messages -S "Arquivo salvo em ${path}.${ext_file}"
          WriteLog "Arquivo salvo em: ${path}.${ext_file}"
          Sleep
       else
          Messages -W "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
          WriteLog --error "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
-         SendMail "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
          [[ -f ${path}.${ext_file} ]] && rm -rf ${path}.${ext_file}
    
          if [ -f "$(which zip)" ]; then
@@ -699,7 +718,7 @@ function LocalBackup() {
                if [ $? = 0 ]; then
                   Messages -S "Arquivo salvo em ${path}.${ext_file}"
                   WriteLog "Arquivo salvo em ${path}.${ext_file}"
-                  SendMail "Backup realizado com sucesso. Arquivo salvo em ${path}.${ext_file}"
+                  SendMail "Backup realizado com sucesso com programa ZIP. Houve erro ao tentar realizar o backup com o programa TAR. Arquivo salvo em ${path}.${ext_file}"
                else
                   Messages -E "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
                   WriteLog "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
@@ -713,11 +732,12 @@ function LocalBackup() {
                if [ $? = 0 ]; then
                   Messages -S "Arquivo salvo em ${path}.${ext_file}"
                   WriteLog "Arquivo salvo em ${path}.${ext_file}"
-                  SendMail "Backup realizado com sucesso. Arquivo salvo em ${path}.${ext_file}"
+                  SendMail "Backup realizado com sucesso com programa ZIP. Houve erro ao tentar realizar o backup com o programa TAR. Arquivo salvo em ${path}.${ext_file}"
                else
                   Messages -E "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
                   WriteLog "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
                   SendMail "Erro ao realizar compactação dos arquivos tanto com comando tar e zip. Backup cancelado."
+                  [[ -f ${path}.${ext_file} ]] && rm -rf ${path}.${ext_file}
                   exit 1
                fi
             fi
@@ -827,8 +847,7 @@ function DatabaseMySQL() {
 }
 
 # function DatabasePostgreSQL()
-# Função com objetivo de realizar o backup das bases de dados a partir do
-# banco PostgreSQL
+# Função com objetivo de realizar o backup das bases de dados a partir do banco PostgreSQL
 function DatabasePostgreSQL() {
 
    [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || [ "${BKP_DATABASE}" = "All" ] || return 1
@@ -838,7 +857,7 @@ function DatabasePostgreSQL() {
    WriteLog "Iniciando backup das bases de dados com PostgreSQL"
    Sleep
 
-   Messages -I "Varrendo as bases"
+   Messages -I "Listando as bases de dados"
 
    # Tratando caminho absoluto para hospedagem do arquivo
    [[ "${LOCAL_PATH}" =~ \/$ ]] && path="${LOCAL_PATH}" || path="${LOCAL_PATH}/"
@@ -850,7 +869,12 @@ function DatabasePostgreSQL() {
       (su - postgres -c "psql -l -U \"${DATABASE_USER}\"" | sed -n 4,/\eof/p | grep -v '(' | awk {'print $1'} | grep -v '|' | grep -v template0)
    }
 
-   if [[ ! $(getDatabases) ]]; then
+   if [[ $(getDatabases) ]]; then
+      for db in $(getDatabases); do
+         Messages -L "Base localizada... ${db}"
+         WriteLog "Base localizada... ${db}"
+      done
+   else
       Messages -E "Erro ao listar as bases de dados."
       WriteLog --error "Erro ao listar as bases de dados."
       SendMail "Erro ao listar as bases de dados (PostgreSQL)."
@@ -858,40 +882,48 @@ function DatabasePostgreSQL() {
       return 1
    fi
 
+   # Variável para verificar se houve erro em algum procedimento do laço
    local error=0
 
-   Debug 2 "Varrendo as bases de dados com o comando: su - postgres -c psql;"
    Debug 2 "Entrando no laço for"
    for db in $(getDatabases); do
-      Messages -I "Realizando vacuum na base de dados: ${db}"
-      WriteLog "Realizando vacuum na base de dados: ${db}"
-      Debug 3 "Realizando vacuum na base com o comando: su - postgres -c \"/usr/bin/vacuumdb -U \"${DATABASE_USER}\" -d $db\""
-      su - postgres -c "/usr/bin/vacuumdb -U \"${DATABASE_USER}\" -d ${db}" 2>> ${LOG_FILE_ERROR}
-      if [ $? = 0 ]; then
-         Messages -S "Vacuum realizado com sucesso: ${db}"
-         WriteLog "Vacuum realizado com sucesso: ${db}"
+
+      if [ "${DATABASE_PGSQL_VACUUM}" = "Yes" ]
+      then
+         Messages -I "Realizando vacuum na base de dados: ${db}"
+         WriteLog "Realizando vacuum na base de dados: ${db}"
+         Debug 3 "Realizando vacuum na base com o comando: su - postgres -c \"/usr/bin/vacuumdb -U \"${DATABASE_USER}\" -d $db\""
+         su - postgres -c "/usr/bin/vacuumdb -U \"${DATABASE_USER}\" -d ${db}" 2>> ${LOG_FILE_ERROR}
+         if [ $? = 0 ]; then
+            Messages -S "Vacuum realizado com sucesso: ${db}"
+            WriteLog "Vacuum realizado com sucesso: ${db}"
+         else
+            Messages -E "Erro ao realizar o vacuum na base ${db}"
+            WriteLog --error "Erro ao realizar o vacuum na base ${db}"
+            SendMail "Erro ao realizar o vacuum na base (PostgreSQL): ${db}"
+            error=1
+         fi
       else
-         Messages -E "Erro ao realizar o vacuum na base ${db}"
-         WriteLog --error "Erro ao realizar o vacuum na base ${db}"
-         SendMail "Erro ao realizar o vacuum na base (PostgreSQL): ${db}"
-         error=1
+         Messages -W "Realizando dump da base \"${db}\" sem realizar vacuumdb"
+         WriteLog "Realizando dump da base \"${db}\" sem realizar vacuumdb"
       fi
 
-      local fullname="${DATESTAMP}-$(hostname)-postgresql-${db}.sql"
+      local fullname="${DATESTAMP}-$(hostname)-postgresql-${db}.backup"
 
       Messages -I "Realizando dump da base: ${db}"
       WriteLog "Realizando dump da base: ${db}"
-      Debug 3 "Realizando dump da base com o comando: "
-      su - postgres -c "pg_dump -U \"${DATABASE_USER}\" ${db} -f ${path}${fullname}" 2>> ${LOG_FILE_ERROR}
+      su - postgres -c "pg_dump --format=c -U \"${DATABASE_USER}\" ${db} -f ${path}${fullname}" 2>> ${LOG_FILE_ERROR}
       if [ $? = 0 ]; then
-         Messages -S "Dump ${db} --> Compactando..."
+         Messages -S "Dump realizado com sucesso: ${db}"
          WriteLog "Dump realizado com sucesso: ${db}"
-         Debug 4 "Dump: ${db} OK. Compactando a base com o comando gzip -qf ${path}${fullname}"
-         gzip -qf ${path}${fullname}
-         WriteLog "MD5: $(md5sum ${path}${fullname}.gz)"
-         Messages -I "MD5: $(md5sum ${path}${fullname}.gz)"
-         WriteLog "Size: $(du -h ${path}${fullname}.gz)"
-         Messages -I "Size: $(du -h ${path}${fullname}.gz)"
+
+         local md5Sum=$(md5sum ${path}${fullname} | cut -d " " -f 1)
+         WriteLog "MD5: ${md5Sum}"
+         Messages -I "MD5: ${md5Sum}"
+
+         local size=$(du -h ${path}${fullname} | tr '\t' ' ' | cut -d " " -f1)
+         WriteLog "Size: ${size}"
+         Messages -I "Size: ${size}"
       else
          Messages -E "Erro ao realizar o dump na base ${db}"
          WriteLog --error "Erro ao realizar o dump na base ${db}"
@@ -1057,15 +1089,28 @@ function SetPermissions(){
 # com comandos específicos a uma rotina em particular.
 # No mesmo diretório basta criar o arquivo extamente
 function AddCommand(){
-   [ -e "${PATH_FULL}/backupsh.add" ] || return 1
+   [ -e "${PATH_FULL}/backupsh.add" ] || return
 
    Debug 1 "Iniciando a função $FUNCNAME"
    Messages -I "Arquivo adicional localizado. Executando o script para complementar o backup"; Sleep
    WriteLog "Arquivo adicional localizado. Executando o script para complementar o backup"
    bash ${PATH_FULL}/backupsh.add
+   if [ $? -eq 0 ]
+   then
+      Messages -S "Backup adicional realizado com sucesso"
+      WriteLog "Backup adicional realizado com sucesso"
+      Sleep
+      Nl
+      return 0
+   else
+      Messages -W "Backup adicional com erro"
+      WriteLog --error "Backup adicional com erro"
+      SendMail "Backup adicional com erro"
+      Sleep
+      Nl
+      return 1
+   fi
    Debug 1 "Saindo da função $FUNCNAME"
-   Nl
-   return 0
 }
 
 
