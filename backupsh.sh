@@ -92,6 +92,11 @@
 #
 # Versão 1.4.5: 2016.07.08, João Arquimedes:
 #               - Debug retordo do comando tar.
+#               - Melhoria no backupRotate.
+#
+# Versão 1.4.6: 2016.07.18, João Arquimedes:
+#               - Melhoria no tratamento de retorno do comando tar
+#               - Melhoria na identificação da varinável SEND_MAIL com CentOS 5
 #
 #
 # Joao Costa, Outubro de 2014
@@ -116,7 +121,8 @@ BIN="rm tar id wc gzip date mkdir find chown chmod egrep hostname md5sum flock"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "MySQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} mysql mysqldump"
 [ "${BKP_DATABASE}" = "Yes" -a "${DATABASE_TYPE}" = "PostgreSQL" ] || [ "${BKP_DATABASE}" = "All" ] && BIN="${BIN} pg_dump psql vacuumdb"
 [ "${WIN_BKP_REMOTE}" = "Yes" ] && BIN="${BIN} mount.cifs mount umount rsync"
-[ "${SEND_MAIL}" = "Yes" -a ! "$(grep "CentOS release 5" /etc/redhat-release)" ] && BIN="${BIN} mailx" || BIN="${BIN} nail"
+[ "${SEND_MAIL}" = "Yes" ] && [ "$(grep "CentOS release 5" /etc/redhat-release)" ]   && BIN="${BIN} nail"
+[ "${SEND_MAIL}" = "Yes" ] && [ ! "$(grep "CentOS release 5" /etc/redhat-release)" ] && BIN="${BIN} mailx"
 
 MENSAGEM_USO="
 Uso: $(basename "$0") [OPÇÕES]
@@ -257,6 +263,7 @@ function GetOSVersion() {
          [[ $(grep "CentOS release 6" $i) ]]         && OS="CentOS 6"
          [[ $(grep "CentOS release 5" $i) ]]         && OS="CentOS 5"
          [[ $(grep "8\." $i) ]]                      && OS="Debian 8"
+         [[ $(grep "stretch/sid" $i) ]]              && OS="Ubuntu Xenial"
       fi
     done
 
@@ -532,8 +539,8 @@ function backupRotate() {
       # Ajustando o valor de n para remover os arquivos
       local newN=$((${n}*24*60-120)) # Convertendo o valor em dia para minutos e diminuindo duas horas
 
-      local filesToRemoveCount=$(find ${p} -type f -mmin +${newN} | egrep "*.$(hostname)*.*(gz|tar|tgz|zip|backup)$" | wc -l)
-      local filesToRemove=$(find ${p} -type f -mmin +${newN} | egrep "*.$(hostname)*.*(gz|tar|tgz|zip|backup)$")
+      local filesToRemoveCount=$(find ${p} -type f -mmin +${newN} | egrep "[[:digit:]]{8}\-[[:digit:]]{4}\-$(hostname)-*.*(gz|tar|tgz|zip|backup)$" | wc -l)
+      local filesToRemove=$(find ${p} -type f -mmin +${newN} | egrep "[[:digit:]]{8}\-[[:digit:]]{4}\-$(hostname)-*.*(gz|tar|tgz|zip|backup)$")
 
       # Setando a barra no final do diretório
       [[ "${p}" =~ \/$ ]] && path="${p}" || path="${p}/"
@@ -682,19 +689,8 @@ function LocalBackup() {
 
       # Executando comando tar
       ${compactCommand} 2>> ${LOG_FILE_ERROR}
-      if [ true ]; then
-      #if [ $? = 0 ]; then
-      # #################################################################################################################
-      #
-      # LOCAL COMENTADO PARA DEBUGAR OS POSSÍVEIS RETORNOS DO COMANDO TAR.
-      # EXIGE MELHORIA PARA CONSIDERAR SE O COMANDO FOI EXECUTADO COM SUCESSO OU SE HOUVE PENAS MENSAGEM DE ALERTA.
-      #
-      # #################################################################################################################
-      
-         Messages -S "Arquivo salvo em ${path}.${ext_file}"
-         WriteLog "Arquivo salvo em: ${path}.${ext_file}"
-         Sleep
-      else
+      if [ $? -eq 2 ]
+      then
          Messages -W "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
          WriteLog --error "Erro ao realizar o backup com o comando tar. Tentando compactar com o comando zip"
          [[ -f ${path}.${ext_file} ]] && rm -rf ${path}.${ext_file}
@@ -747,6 +743,10 @@ function LocalBackup() {
             SendMail "Programa zip não localizado. Backup cancelado."
             exit 1
          fi
+      else
+         Messages -S "Arquivo salvo em ${path}.${ext_file}"
+         WriteLog "Arquivo salvo em: ${path}.${ext_file}"
+         Sleep
       fi
 
       local md5Sum=$(md5sum ${path}.${ext_file} | cut -d " " -f 1)
@@ -1033,7 +1033,7 @@ function RemoteSync() {
    Sleep
 
    # Verificando se foi informado a barra no final da variável
-   [[ "${WIN_SRC_MOUNT}" =~ \/$ ]] && pathToSync="${WIN_SRC_MOUNT}$(hostname)/" || pathToSync="${WIN_SRC_MOUNT}/$(hostname)/"
+   [[ "${WIN_SRC_MOUNT}" =~ \/$ ]] && pathToSync="${WIN_SRC_MOUNT}$(hostname)" || pathToSync="${WIN_SRC_MOUNT}/$(hostname)/"
 
    Debug 2 "Tratando a variável do caminho do backup remoto:"
    Debug 2 "Valor da variável \$SRC_MOUNT: ${WIN_SRC_MOUNT}"
