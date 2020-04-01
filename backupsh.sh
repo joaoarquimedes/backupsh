@@ -11,7 +11,7 @@
 # compactando, armazenando em um diretório local e posteriormente levando
 # estes arquivos a um servidor remoto.
 # Todas as configurações são realizadas alterando somente as variáveis
-# globais ou aceitando alguns parâmetros na execussão.
+# globais ou aceitando alguns parâmetros na execução.
 #
 # -----------------------------------------------------------------------
 #
